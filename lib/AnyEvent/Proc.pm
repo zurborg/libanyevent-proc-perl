@@ -153,17 +153,43 @@ sub _run_cmd($$$$$) {
 
 =over 4
 
-=item * I<bin>
+=item * I<bin> (mandatory)
 
 Name (or path) to a binary
 
-=item * I<args> (optional)
+=item * I<args>
 
 ArrayRef with command arguments
 
-=item * I<timeout> (optional)
+=item * I<ttl>
 
-Timeout after the process automatically gets killed
+Time-to-life timeout after the process automatically gets killed
+
+See also I<on_ttl_exceed> callback handler.
+
+=item * I<timeout>
+
+Inactive timeout value (fractional seconds) for all handlers.
+
+See also I<on_timeout> callback handler. If omitted, after exceeding timeout all handlers will be closed and the subprocess can finish.
+
+=item * I<wtimeout>
+
+Like I<timeout> but sets only the write timeout value for STDIN.
+
+Corresponding callback handler: I<on_wtimeout>
+
+=item * I<rtimeout>
+
+Like I<timeout> but sets only the read timeout value for STDOUT.
+
+Corresponding callback handler: I<on_rtimeout>
+
+=item * I<etimeout>
+
+Like I<timeout> but sets only the read timeout value for STDERR.
+
+Corresponding callback handler: I<on_etimeout>
 
 =item * I<outstr>
 
@@ -175,7 +201,27 @@ Same as I<outstr>, but for STDERR.
 
 =item * I<on_exit>
 
-Callback handle when process exited
+Callback handler called when process exits
+
+=item * I<on_ttl_exceed>
+
+Callback handler called when I<ttl> exceeds
+
+=item * I<on_timeout>
+
+Callback handler called when any inactivity I<timeout> value exceeds
+
+=item * I<on_wtimeout>
+
+Callback handler called when STDIN write inactivity I<wtimeout> value exceeds
+
+=item * I<on_rtimeout>
+
+Callback handler called when STDOUT read inactivity I<rtimeout> value exceeds
+
+=item * I<on_etimeout>
+
+Callback handler called when STDERR read inactivity I<etimeout> value exceeds
 
 =back
 
@@ -204,10 +250,11 @@ sub new($%) {
 		err => $rERR,
 		pid => $pid,
 		listeners => {
-			exit => $options{on_exit},
-			eof_stdin  => delete $options{on_eof_stdin},
-			eof_stdout => delete $options{on_eof_stdout},
-			eof_stderr => delete $options{on_eof_stderr},
+			exit => delete $options{on_exit},
+			ttl_exceed => delete $options{on_ttl_exceed},
+			#eof_stdin  => delete $options{on_eof_stdin},
+			#eof_stdout => delete $options{on_eof_stdout},
+			#eof_stderr => delete $options{on_eof_stderr},
 		},
 		cv => $cv,
 		waiters => {
@@ -218,12 +265,44 @@ sub new($%) {
 	} => ref $class || $class;
 	
 	my $w;
-	if ($options{timeout}) {
-		$w = AnyEvent->timer(after => delete $options{timeout}, cb => sub {
+	if ($options{ttl}) {
+		$w = AnyEvent->timer(after => delete $options{ttl}, cb => sub {
 			return unless $self->alive;
 			$self->kill('KILL');
-			$self->_emit('on_timeout');
+			$self->_emit('ttl_exceed');
 		});
+	}
+	
+	my $kill = sub { $self->end };
+	
+	if ($options{timeout}) {
+		$wIN->timeout($options{timeout});
+		$rOUT->timeout($options{timeout});
+		$rERR->timeout($options{timeout});
+		delete $options{timeout};
+		$options{on_timeout} ||= $kill;
+		$wIN->on_timeout($options{on_timeout});
+		$rOUT->on_timeout($options{on_timeout});
+		$rERR->on_timeout($options{on_timeout});
+		delete $options{on_timeout};
+	}
+	
+	if ($options{wtimeout}) {
+		$wIN->wtimeout(delete $options{wtimeout});
+		$options{on_wtimeout} ||= $kill;
+		$wIN->on_wtimeout(delete $options{on_wtimeout});
+	}
+	
+	if ($options{rtimeout}) {
+		$rOUT->rtimeout(delete $options{rtimeout});
+		$options{on_rtimeout} ||= $kill;
+		$rOUT->on_rtimeout(delete $options{on_rtimeout});
+	}
+
+	if ($options{etimeout}) {
+		$rERR->rtimeout(delete $options{etimeout});
+		$options{on_etimeout} ||= $kill;
+		$rERR->on_rtimeout(delete $options{on_etimeout});
 	}
 	
 	if ($options{errstr}) {
@@ -256,6 +335,10 @@ sub new($%) {
 		undef $w;
 		$self->_emit(exit => shift->recv);
 	});
+	
+	if (keys %options) {
+		AE::log note => "unknown left-over option(s): ".join ', ' =>  keys %options;
+	}
 	
 	$self;
 }
@@ -311,6 +394,7 @@ sub kill($;$) {
 	my ($self, $signal) = @_;
 	$signal = 'INT' unless defined $signal;
 	kill $signal => $self->pid;
+	$self;
 }
 
 =method alive()
@@ -338,6 +422,32 @@ sub wait($) {
 	my $status = $self->{cv}->recv;
 	waitpid $self->{pid} => 0;
 	$status;
+}
+
+=method finish
+
+Closes STDIN of subprocess
+
+=cut
+
+sub finish($) {
+	my ($self) = @_;
+	$self->in->destroy;
+	$self;
+}
+
+=method end
+
+Closes all handles of subprocess
+
+=cut
+
+sub end($) {
+	my ($self) = @_;
+	$self->in->destroy;
+	$self->out->destroy;
+	$self->err->destroy;
+	$self;
 }
 
 =method write($scalar)
@@ -371,6 +481,7 @@ Queues one or more line to be written.
 sub writeln($@) {
 	my ($self, @lines) = @_;
 	$self->write("$_\n") for @lines;
+	$self;
 }
 
 sub _push_read($$@) {
