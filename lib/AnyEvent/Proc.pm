@@ -158,7 +158,11 @@ sub _run_cmd($$$$$) {
 	my $cw;
 	$cw = AE::child $pid => sub {
 		$status = $_[1] >> 8;
-		AE::log warn => "child exited with status $status" if $status;
+		my $signal = $_[1] & 127;
+		my $coredump = $_[1] & 128;
+		AE::log info => "child exited with status $status" if $status;
+		AE::log debug => "child exited with signal $signal" if $signal;
+		AE::log note => "child exited with coredump" if $coredump;
 		undef $cw;
 		$cv->end;
 	};
