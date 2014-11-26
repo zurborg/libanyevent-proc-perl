@@ -434,6 +434,7 @@ sub _reol { shift->{reol} }
 
 sub _emit($$@) {
 	my ($self, $name, @args) = @_;
+	AE::log debug => "trapped $name";
 	if (exists $self->{listeners}->{$name} and defined $self->{listeners}->{$name}) {
 		$self->{listeners}->{$name}->($self, @args);
 	}
