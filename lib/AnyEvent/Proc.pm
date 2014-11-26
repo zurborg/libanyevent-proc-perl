@@ -7,9 +7,12 @@ use AnyEvent;
 use AnyEvent::Handle;
 use AnyEvent::Util ();
 use Try::Tiny;
+use Exporter qw(import);
 use POSIX;
 
 # VERSION
+
+our @EXPORT_OK = qw(run);
 
 =head1 SYNOPSIS
 
@@ -347,6 +350,32 @@ sub new($%) {
 	}
 	
 	$self;
+}
+
+=func run($bin[, @args])
+
+Bevahes similar to L<perlfunc/system>. In scalar context, it returns STDOUT of the subprocess. STDERR will be passed-through by L<perlfunc/warn>.
+
+	$out = AnyEvent::Proc::run(...)
+
+In list context, STDOUT and STDERR will be separately returned.
+
+	($out, $err) = AnyEvent::Proc::run(...)
+
+=cut
+
+sub run($@) {
+	my ($bin, @args) = @_;
+	my ($out, $err);
+	my $proc = __PACKAGE__->new(bin => $bin, args => \@args, outstr => \$out, errstr => \$err);
+	$proc->finish;
+	$proc->wait;
+	if (wantarray) {
+		return ($out, $err);
+	} else {
+		warn $err if $err;
+		return $out;
+	}
 }
 
 sub _on {
