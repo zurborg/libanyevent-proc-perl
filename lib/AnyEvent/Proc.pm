@@ -962,4 +962,10 @@ sub readline_error($) {
 	shift->readline_error_cv->recv
 }
 
+# AnyEvent::Impl::Perl has some issues with POSIX::dup.
+# This statement solves the problem.
+AnyEvent::post_detect {
+	AE::child $$ => sub {};
+};
+
 1;
