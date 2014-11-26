@@ -3,7 +3,7 @@
 use Test::Most;
 use AnyEvent::Proc qw(run);
 
-plan tests => 3;
+plan tests => 4;
 
 my ($out, $err);
 
@@ -20,6 +20,13 @@ SKIP: {
 	($out, $err) = run($bin => 'THISFILEDOESNOTEXISTSATALL');
 	like $out => qr{^\s*$}, 'stdout is empty';
 	like $err => qr{^.*no such file or directory\s*$}i, 'stderr hat error message';
+}
+
+SKIP: {
+	my $bin = '/bin/false';
+	skip "executable $bin not available", 1 unless -x $bin;
+	run($bin);
+	is $? => 1, 'exit code is properly saved in $?'
 }
 
 done_testing;
