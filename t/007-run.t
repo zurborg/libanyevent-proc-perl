@@ -26,7 +26,7 @@ SKIP: {
 	my $bin = '/bin/false';
 	skip "executable $bin not available", 1 unless -x $bin;
 	run($bin);
-	is $? => 1, 'exit code is properly saved in $?'
+	is $?>>8 => 1, 'exit code is properly saved in $?'
 }
 
 done_testing;

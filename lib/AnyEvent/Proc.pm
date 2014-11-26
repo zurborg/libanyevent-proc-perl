@@ -376,7 +376,9 @@ In list context, STDOUT and STDERR will be separately returned.
 
 	($out, $err) = AnyEvent::Proc::run(...)
 
-The exit-code is stored in C<$?>.
+The exit-code is stored in C<$?>. Please keep in mind that for portability reasons C<$?> is shifted by 8 bits.
+
+	$exitcode = $? >> 8
 
 =cut
 
@@ -385,7 +387,7 @@ sub run($@) {
 	my ($out, $err);
 	my $proc = __PACKAGE__->new(bin => $bin, args => \@args, outstr => \$out, errstr => \$err);
 	$proc->finish;
-	$? = $proc->wait;
+	$? = $proc->wait << 8;
 	if (wantarray) {
 		return ($out, $err);
 	} else {
