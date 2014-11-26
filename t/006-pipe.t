@@ -26,29 +26,31 @@ plan tests => 4;
 
 my ($proc, $R, $W, $cv);
 
+SKIP: {
+	my $bin = '/bin/cat';
+	skip "executable $bin not available", 4 unless -x $bin;
 
-($R, $W) = AnyEvent::Proc::_wpipe(sub {});
-$cv = sync_read($R);
-
-$proc = AnyEvent::Proc->new(bin => '/bin/cat', ttl => 5);
-$proc->pipe($W);
-$proc->writeln($$);
-$proc->finish;
-is $proc->wait() => 0, 'wait ok, status is 0';
-$W->close;
-like $cv->recv => qr{^$$\s*$}, 'rbuf contains my pid';
-
-
-($R, $W) = AnyEvent::Proc::_rpipe(sub {});
-
-$proc = AnyEvent::Proc->new(bin => '/bin/cat', ttl => 5);
-$proc->pipe($W);
-$proc->writeln($$);
-$proc->finish;
-is $proc->wait() => 0, 'wait ok, status is 0';
-$W->destroy;
-like <$R> => qr{^$$\s*$}, 'buf contains my pid';
-
-
+	($R, $W) = AnyEvent::Proc::_wpipe(sub {});
+	$cv = sync_read($R);
+	
+	$proc = AnyEvent::Proc->new(bin => $bin, ttl => 5);
+	$proc->pipe($W);
+	$proc->writeln($$);
+	$proc->finish;
+	is $proc->wait() => 0, 'wait ok, status is 0';
+	$W->close;
+	like $cv->recv => qr{^$$\s*$}, 'rbuf contains my pid';
+	
+	
+	($R, $W) = AnyEvent::Proc::_rpipe(sub {});
+	
+	$proc = AnyEvent::Proc->new(bin => $bin, ttl => 5);
+	$proc->pipe($W);
+	$proc->writeln($$);
+	$proc->finish;
+	is $proc->wait() => 0, 'wait ok, status is 0';
+	$W->destroy;
+	like <$R> => qr{^$$\s*$}, 'buf contains my pid';
+}
 
 done_testing;
