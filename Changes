@@ -4,6 +4,10 @@ Revision history for AnyEvent-Proc
  - new function "run"
  - update tests
  - update documentation
+ - debug messages
+ - signal defaults to TERM
+ - fix issue with AnyEvent::Impl::Perl
+ - improve tests
 
 0.100 2014-11-26
  - change version format
