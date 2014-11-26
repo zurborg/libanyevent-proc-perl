@@ -1,8 +1,11 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+ - new function "run"
+ - update tests
+ - update documentation
 
-0.101 2014-11-26
+0.100 2014-11-26
  - change version format
 
 0.1.0 2014-11-26
