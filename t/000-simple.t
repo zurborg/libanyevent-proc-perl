@@ -11,7 +11,7 @@ $proc->writeln($$);
 ok $proc->alive(), 'proc is still alive (1)';
 is $proc->readline() => $$, 'readline returns my pid';
 ok $proc->alive(), 'proc is still alive (2)';
-$proc->kill();
+$proc->fire();
 is $proc->wait() => 0, 'wait ok, status is 0';
 
 done_testing;

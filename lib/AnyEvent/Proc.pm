@@ -16,7 +16,7 @@ use POSIX;
 	my $proc = AnyEvent::Proc->new(bin => 'cat');
 	$proc->writeln('hello');
 	my $hello = $proc->readline;
-	$proc->kill;
+	$proc->fire;
 	$proc->wait;
 
 =cut
@@ -256,6 +256,7 @@ sub new($%) {
 			#eof_stdout => delete $options{on_eof_stdout},
 			#eof_stderr => delete $options{on_eof_stderr},
 		},
+		eol => "\n",
 		cv => $cv,
 		waiters => {
 			in => [],
@@ -263,12 +264,16 @@ sub new($%) {
 			err => [],
 		},
 	} => ref $class || $class;
+	{
+		my $eol = quotemeta $self->_eol;
+		$self->{reol} = delete $options{reol} || qr{$eol};
+	}
 	
 	my $w;
 	if ($options{ttl}) {
 		$w = AnyEvent->timer(after => delete $options{ttl}, cb => sub {
 			return unless $self->alive;
-			$self->kill('KILL');
+			$self->kill;
 			$self->_emit('ttl_exceed');
 		});
 	}
@@ -280,47 +285,48 @@ sub new($%) {
 		$rOUT->timeout($options{timeout});
 		$rERR->timeout($options{timeout});
 		delete $options{timeout};
-		$options{on_timeout} ||= $kill;
-		$wIN->on_timeout($options{on_timeout});
-		$rOUT->on_timeout($options{on_timeout});
-		$rERR->on_timeout($options{on_timeout});
-		delete $options{on_timeout};
+		
+		$self->_on(timeout => (delete ($options{on_timeout}) || $kill));
+		my $cb = sub { $self->_emit('timeout') };
+		$wIN->on_timeout($cb);
+		$rOUT->on_timeout($cb);
+		$rERR->on_timeout($cb);
 	}
 	
 	if ($options{wtimeout}) {
 		$wIN->wtimeout(delete $options{wtimeout});
-		$options{on_wtimeout} ||= $kill;
-		$wIN->on_wtimeout(delete $options{on_wtimeout});
+		
+		$self->_on(wtimeout => (delete($options{on_wtimeout}) || $kill));
+		my $cb = sub { $self->_emit('wtimeout') };
+		$wIN->on_wtimeout($cb);
 	}
 	
 	if ($options{rtimeout}) {
 		$rOUT->rtimeout(delete $options{rtimeout});
-		$options{on_rtimeout} ||= $kill;
-		$rOUT->on_rtimeout(delete $options{on_rtimeout});
+		
+		$self->_on(rtimeout => (delete($options{on_rtimeout}) || $kill));
+		my $cb = sub { $self->_emit('rtimeout') };
+		$rOUT->on_rtimeout($cb);
 	}
 
 	if ($options{etimeout}) {
 		$rERR->rtimeout(delete $options{etimeout});
-		$options{on_etimeout} ||= $kill;
-		$rERR->on_rtimeout(delete $options{on_etimeout});
+		
+		$self->_on(etimeout => (delete($options{on_etimeout}) || $kill));
+		my $cb = sub { $self->_emit('etimeout') };
+		$rERR->on_rtimeout($cb);
 	}
 	
 	if ($options{errstr}) {
 		my $sref = delete $options{errstr};
-		$rERR->on_read(sub {
-			local $_ = shift;
-			$$sref .= $_->rbuf;
-			$_->rbuf = '';
-		});
+		$$sref = '';
+		$self->pipe(err => $sref);
 	}
 	
 	if ($options{outstr}) {
 		my $sref = delete $options{outstr};
-		$rOUT->on_read(sub {
-			local $_ = shift;
-			$$sref .= $_->rbuf;
-			$_->rbuf = '';
-		});
+			$$sref = '';
+		$self->pipe(out => $sref);
 	}
 	
 	$cvIN->cb(_reaper($self->{waiters}->{in}));
@@ -341,6 +347,11 @@ sub new($%) {
 	}
 	
 	$self;
+}
+
+sub _on {
+	my ($self, $name, $handler) = @_;
+	$self->{listeners}->{$name} = $handler;
 }
 
 =method in()
@@ -367,6 +378,9 @@ Returns a L<AnyEvent::Handle> for STDERR
 
 sub err { shift->{err} }
 
+sub _eol { shift->{eol} }
+sub _reol { shift->{reol} }
+
 sub _emit($$@) {
 	my ($self, $name, @args) = @_;
 	if (exists $self->{listeners}->{$name} and defined $self->{listeners}->{$name}) {
@@ -384,17 +398,54 @@ sub pid($) {
 	shift->{pid};
 }
 
-=method kill([$signal])
+=method fire([$signal])
 
 Sends a named signal to the subprocess. C<$signal> defaults to I<INT> if omitted.
 
 =cut
 
-sub kill($;$) {
+sub fire($;$) {
 	my ($self, $signal) = @_;
 	$signal = 'INT' unless defined $signal;
-	kill $signal => $self->pid;
+	kill uc $signal => $self->pid;
 	$self;
+}
+
+=method kill()
+
+Kills the subprocess the most brutal way. Equals to
+
+	$proc->fire('kill')
+
+=cut
+
+sub kill($) {
+	my ($self) = @_;
+	$self->fire('kill');
+}
+
+=method fire_and_kill([$signal, ]$time)
+
+Fires specified signal C<$signal> (or I<INT> if omitted) and after C<$time> seconds kills the subprocess.
+
+This is a synchronous call. After this call, the subprocess can be considered to be dead.
+
+Returns the exit code of the subprocess.
+
+=cut
+
+sub fire_and_kill($$;$) {
+	my $self = shift;
+	my $time = pop;
+	my $signal = uc (pop || 'INT');
+	my $w = AnyEvent->timer(after => $time, cb => sub {
+		return unless $self->alive;
+		$self->kill;
+	});
+	$self->fire($signal);
+	my $exit = $self->wait;
+	undef $w;
+	$exit;
 }
 
 =method alive()
@@ -403,12 +454,12 @@ Check whether is subprocess is still alive. Returns I<1> or I<0>
 
 In fact, the method equals to
 
-	$proc->kill(0)
+	$proc->fire(0)
 
 =cut
 
 sub alive($) {
-	shift->kill(0) ? 1 : 0;
+	shift->fire(0) ? 1 : 0;
 }
 
 =method wait()
@@ -421,10 +472,11 @@ sub wait($) {
 	my ($self) = @_;
 	my $status = $self->{cv}->recv;
 	waitpid $self->{pid} => 0;
+	$self->end;
 	$status;
 }
 
-=method finish
+=method finish()
 
 Closes STDIN of subprocess
 
@@ -436,7 +488,7 @@ sub finish($) {
 	$self;
 }
 
-=method end
+=method end()
 
 Closes all handles of subprocess
 
@@ -448,6 +500,60 @@ sub end($) {
 	$self->out->destroy;
 	$self->err->destroy;
 	$self;
+}
+
+=method stop_timeout()
+
+Stopps read/write timeout for STDIN, STDOUT and STDERR.
+
+See I<timeout> and I<on_timeout> options in I<new()>.
+
+=cut
+
+sub stop_timeout($) {
+	my ($self) = @_;
+	$self->in->timeout(0);
+	$self->out->timeout(0);
+	$self->err->timeout(0);
+}
+
+=method stop_wtimeout()
+
+Stopps write timeout for STDIN.
+
+See I<wtimeout> and I<on_wtimeout> options in I<new()>.
+
+=cut
+
+sub stop_wtimeout($) {
+	my ($self) = @_;
+	$self->in->wtimeout(0);
+}
+
+=method stop_rtimeout()
+
+Stopps read timeout for STDIN.
+
+See I<rtimeout> and I<on_rtimeout> options in I<new()>.
+
+=cut
+
+sub stop_rtimeout($) {
+	my ($self) = @_;
+	$self->out->rtimeout(0);
+}
+
+=method stop_etimeout()
+
+Stopps read timeout for STDIN.
+
+See I<etimeout> and I<on_etimeout> options in I<new()>.
+
+=cut
+
+sub stop_etimeout($) {
+	my ($self) = @_;
+	$self->err->rtimeout(0);
 }
 
 =method write($scalar)
@@ -480,8 +586,57 @@ Queues one or more line to be written.
 
 sub writeln($@) {
 	my ($self, @lines) = @_;
-	$self->write("$_\n") for @lines;
+	$self->write($_.$self->_eol) for @lines;
 	$self;
+}
+
+=method pipe([$fd, ]$peer)
+
+Pipes any output of STDOUT to another handle. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an object that implements the I<print> method, a ScalarRef or a GlobRef.
+
+C<$fd> defaults to I<stdout>.
+
+	$proc->pipe(stderr => $socket);
+
+=cut
+
+sub pipe($$;$) {
+	my $self = shift;
+	my $peer = pop;
+	my $what = lc (pop || 'out');
+	$what =~ s{^std}{};
+	use Scalar::Util qw(blessed);
+	my $sub;
+	if (blessed $peer) {
+		if ($peer->isa(__PACKAGE__)) {
+			$sub = sub {
+				$peer->write(shift)
+			}
+		} elsif ($peer->isa('AnyEvent::Handle')) {
+			$sub = sub {
+				$peer->push_write(shift)
+			}
+		} elsif ($peer->can('print')) {
+			$sub = sub {
+				$peer->print(shift)
+			}
+		}
+	} elsif (ref $peer eq 'SCALAR') {
+		$sub = sub {
+			$$peer .= shift
+		}
+	} elsif (ref $peer eq 'GLOB') {
+		$sub = sub {
+			print $peer shift();
+		}
+	}
+	if ($sub) {
+		$self->$what->on_read(sub {
+			local $_ = $_[0]->rbuf;
+			$_[0]->rbuf = '';
+			$sub->($_);
+		})
+	}
 }
 
 sub _push_read($$@) {
@@ -510,7 +665,7 @@ sub _unshift_read($$@) {
 
 sub _readline($$$) {
 	my ($self, $what, $sub) = @_;
-	$self->_push_read($what => line => $sub);
+	$self->_push_read($what => line => $self->_reol, $sub);
 }
 
 sub _readchunk($$$$) {
@@ -556,6 +711,14 @@ sub _readline_ch($$;$) {
 	$self->_push_waiter($what => $channel);
 	$channel->shutdown unless $self->_readline($what => _sub_ch($channel));
 	$channel;
+}
+
+sub _readlines_cb($$$) {
+	my ($self, $what, $cb) = @_;
+	$self->_push_waiter($what => $cb);
+	$self->$what->on_read(sub {
+		$self->_readline($what => _sub_cb($cb));
+	});
 }
 
 sub _readlines_ch($$;$) {
@@ -631,7 +794,7 @@ sub readline_cv($;$) {
 	$self->_readline_cv(out => $cv);
 }
 
-=method readline_cv([$channel])
+=method readline_ch([$channel])
 
 Reads a singe line from STDOUT and put the result to coro channel C<$channel>. A L<Coro::Channel> will be created and returned, if C<$channel> is omitted.
 
@@ -642,7 +805,18 @@ sub readline_ch($;$) {
 	$self->_readline_ch(out => $ch);
 }
 
-=method readlines_cv([$channel])
+=method readlines_cb($callback)
+
+Read lines continiously from STDOUT and calls on every line the handler C<$callback>.
+
+=cut
+
+sub readlines_cb($$) {
+	my ($self, $cb) = @_;
+	$self->_readlines_cb(out => $cb);
+}
+
+=method readlines_ch([$channel])
 
 Read lines continiously from STDOUT and put every line to coro channel C<$channel>. A L<Coro::Channel> will be created and returned, if C<$channel> is omitted.
 
@@ -698,6 +872,17 @@ Bevahes equivalent as I<readline_ch>, but for STDERR.
 sub readline_error_ch($;$) {
 	my ($self, $ch) = @_;
 	$self->_readline_ch(err => $ch);
+}
+
+=method readlines_error_cb($callback)
+
+Bevahes equivalent as I<readlines_cb>, but for STDERR.
+
+=cut
+
+sub readlines_error_cb($$) {
+	my ($self, $cb) = @_;
+	$self->_readlines_cb(out => $cb);
 }
 
 =method readlines_error_ch([$channel])
