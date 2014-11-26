@@ -456,13 +456,13 @@ sub pid($) {
 
 =method fire([$signal])
 
-Sends a named signal to the subprocess. C<$signal> defaults to I<INT> if omitted.
+Sends a named signal to the subprocess. C<$signal> defaults to I<TERM> if omitted.
 
 =cut
 
 sub fire($;$) {
 	my ($self, $signal) = @_;
-	$signal = 'INT' unless defined $signal;
+	$signal = 'TERM' unless defined $signal;
 	kill uc $signal => $self->pid;
 	$self;
 }
@@ -482,7 +482,7 @@ sub kill($) {
 
 =method fire_and_kill([$signal, ]$time)
 
-Fires specified signal C<$signal> (or I<INT> if omitted) and after C<$time> seconds kills the subprocess.
+Fires specified signal C<$signal> (or I<TERM> if omitted) and after C<$time> seconds kills the subprocess.
 
 This is a synchronous call. After this call, the subprocess can be considered to be dead.
 
@@ -493,7 +493,7 @@ Returns the exit code of the subprocess.
 sub fire_and_kill($$;$) {
 	my $self = shift;
 	my $time = pop;
-	my $signal = uc (pop || 'INT');
+	my $signal = uc (pop || 'TERM');
 	my $w = AnyEvent->timer(after => $time, cb => sub {
 		return unless $self->alive;
 		$self->kill;
