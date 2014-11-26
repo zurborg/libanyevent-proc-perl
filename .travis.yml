@@ -26,5 +26,7 @@ install:
    - cpanm --quiet --notest --skip-satisfied Dist::Zilla
    - "dzil authordeps          --missing | grep -vP '[^\\w:]' | xargs -n 5 -P 10 cpanm --quiet --notest"
    - "dzil listdeps   --author --missing | grep -vP '[^\\w:]' | cpanm --verbose"
+before_script:
+   - export PERL_ANYEVENT_VERBOSE=8
 script:
    - dzil smoke --release --author
