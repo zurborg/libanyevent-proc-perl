@@ -384,7 +384,7 @@ The exit-code is stored in C<$?>. Please keep in mind that for portability reaso
 
 sub run($@) {
 	my ($bin, @args) = @_;
-	my ($out, $err);
+	my ($out, $err) = ('', '');
 	my $proc = __PACKAGE__->new(bin => $bin, args => \@args, outstr => \$out, errstr => \$err);
 	$proc->finish;
 	$? = $proc->wait << 8;
