@@ -12,8 +12,6 @@ use POSIX;
 
 # VERSION
 
-our @EXPORT_OK = qw(run);
-
 =head1 SYNOPSIS
 
 	my $proc = AnyEvent::Proc->new(bin => 'cat');
@@ -22,7 +20,23 @@ our @EXPORT_OK = qw(run);
 	$proc->fire;
 	$proc->wait;
 
+=head1 DESCRIPTION
+
+AnyEvent::Proc is a L<AnyEvent>-based helper class for running external commands with full control over STDIN, STDOUT and STDERR.
+
+=head1 EXPORTS
+
+Nothing by default. The following functions will be exported on request:
+
+=over 4
+
+=item * L</run>
+
+=back
+
 =cut
+
+our @EXPORT_OK = qw(run);
 
 sub _rpipe(&) {
 	my $on_eof = shift;
@@ -386,6 +400,10 @@ sub _on {
 =method in()
 
 Returns a L<AnyEvent::Handle> for STDIN
+
+Useful for piping data into us:
+
+	$socket->print($proc->in->fh)
 
 =cut
 
