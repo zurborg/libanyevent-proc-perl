@@ -676,7 +676,6 @@ sub pipe($$;$) {
 	} elsif (ref $peer eq 'SCALAR') {
 		$sub = sub {
 			local $_ = shift;
-			AE::log debug => "appending <<$_>> to $peer";
 			$$peer .= $_;
 		}
 	} elsif (ref $peer eq 'GLOB') {
