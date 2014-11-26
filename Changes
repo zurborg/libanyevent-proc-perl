@@ -2,6 +2,9 @@ Revision history for AnyEvent-Proc
 
 {{$NEXT}}
 
+0.101 2014-11-26
+ - change version format
+
 0.1.0 2014-11-26
  - first release
 
