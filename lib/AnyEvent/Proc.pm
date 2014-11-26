@@ -342,7 +342,7 @@ sub new($%) {
 	
 	if ($options{outstr}) {
 		my $sref = delete $options{outstr};
-			$$sref = '';
+		$$sref = '';
 		$self->pipe(out => $sref);
 	}
 	
@@ -683,6 +683,8 @@ sub pipe($$;$) {
 			$_[0]->rbuf = '';
 			$sub->($_);
 		})
+	} else {
+		AE::log fatal => "cannot handle $peer for $what";
 	}
 }
 
