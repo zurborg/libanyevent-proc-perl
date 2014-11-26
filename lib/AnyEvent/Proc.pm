@@ -138,12 +138,12 @@ sub _run_cmd($$$$$) {
         AnyEvent::Util::close_all_fds_except 0, 1, 2;
  
 		my $bin = $cmd->[0];
- 
+
 		no warnings;
 
 		exec { $bin } @$cmd;
 
-		exit 126;
+		POSIX::_exit (126);
 	}
  
 	$$pidref = $pid;
