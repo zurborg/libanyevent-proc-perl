@@ -1,6 +1,8 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+
+0.101 2014-11-27
  - new function "run"
  - update tests
  - update documentation
@@ -9,12 +11,6 @@ Revision history for AnyEvent-Proc
  - fix issue with AnyEvent::Impl::Perl
  - improve tests
 
-0.100 2014-11-26
- - change version format
-
-0.1.0 2014-11-26
- - first release
-
  [API CHANGES]
 
  [BUG FIXES]
@@ -22,4 +18,10 @@ Revision history for AnyEvent-Proc
  [DOCUMENTATION]
 
  [ENHANCEMENTS]
+
+0.100 2014-11-26
+ - change version format
+
+0.1.0 2014-11-26
+ - first release
 
