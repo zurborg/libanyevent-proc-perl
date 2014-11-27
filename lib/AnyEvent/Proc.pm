@@ -648,7 +648,7 @@ sub writeln($@) {
 
 =method pipe([$fd, ]$peer)
 
-Pipes any output of STDOUT to another handle. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an object that implements the I<print> method, a ScalarRef or a GlobRef.
+Pipes any output of STDOUT to another handle. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, a L<Coro::Channel>, an object that implements the I<print> method, a ScalarRef or a GlobRef or a CodeRef.
 
 C<$fd> defaults to I<stdout>.
 
@@ -672,6 +672,10 @@ sub pipe($$;$) {
 			$sub = sub {
 				$peer->push_write(shift)
 			}
+		} elsif ($peer->isa('Coro::Channel')) {
+			$sub = sub {
+				$peer->put(shift)
+			}
 		} elsif ($peer->can('print')) {
 			$sub = sub {
 				$peer->print(shift)
@@ -686,6 +690,8 @@ sub pipe($$;$) {
 		$sub = sub {
 			print $peer shift();
 		}
+	} elsif (ref $peer eq 'CODE') {
+		$sub = $peer
 	}
 	if ($sub) {
 		$self->$what->on_read(sub {
