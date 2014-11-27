@@ -38,7 +38,7 @@ SKIP: {
 	$proc->writeln($$);
 	$proc->finish;
 	is $proc->wait() => 0, 'wait ok, status is 0';
-	$W->close;
+	close $W;
 	like $cv->recv => qr{^$$\s*$}, 'rbuf contains my pid';
 	
 	
