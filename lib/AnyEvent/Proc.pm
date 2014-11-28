@@ -711,7 +711,7 @@ sub pipe($$;$) {
 
 =method pull($peer)
 
-Pulls any data from another handle to STDID. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an L<IO::Handle> (including any subclass), a L<Coro::Channel> or a GlobRef.
+Pulls any data from another handle to STDIN. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an L<IO::Handle> (including any subclass), a L<Coro::Channel> or a GlobRef.
 
 	$proc->pull($socket);
 
