@@ -657,7 +657,7 @@ sub writeln($@) {
 
 =method pipe([$fd, ]$peer)
 
-Pipes any output of STDOUT to another handle. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, a L<Coro::Channel>, an object that implements the I<print> method, a ScalarRef or a GlobRef or a CodeRef.
+Pipes any output of STDOUT to another handle. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, a L<Coro::Channel>, an object that implements the I<print> method (like L<IO::Handle>, including any subclass), a ScalarRef or a GlobRef or a CodeRef.
 
 C<$fd> defaults to I<stdout>.
 
