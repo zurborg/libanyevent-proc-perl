@@ -3,6 +3,7 @@
 use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc;
+use IO::Pipe;
 
 sub sync_read {
 	my $h = shift;
@@ -22,13 +23,13 @@ sub sync_read {
 	$cv;
 }
 
-plan tests => 4;
+plan tests => 6;
 
 my ($proc, $R, $W, $cv);
 
 SKIP: {
 	my $bin = '/bin/cat';
-	skip "executable $bin not available", 4 unless -x $bin;
+	skip "executable $bin not available", 6 unless -x $bin;
 
 	($R, $W) = AnyEvent::Proc::_wpipe(sub {});
 	$cv = sync_read($R);
@@ -50,6 +51,16 @@ SKIP: {
 	$proc->finish;
 	is $proc->wait() => 0, 'wait ok, status is 0';
 	$W->destroy;
+	like <$R> => qr{^$$\s*$}, 'buf contains my pid';
+	
+	($R, $W) = @{*{IO::Pipe->new}};
+	
+	$proc = AnyEvent::Proc->new(bin => $bin, ttl => 5);
+	$proc->pipe($W);
+	$proc->writeln($$);
+	$proc->finish;
+	is $proc->wait() => 0, 'wait ok, status is 0';
+	close $W;
 	like <$R> => qr{^$$\s*$}, 'buf contains my pid';
 }
 
