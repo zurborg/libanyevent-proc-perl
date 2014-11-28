@@ -76,6 +76,15 @@ sub _wpipe(&) {
 	);
 }
 
+sub _on_read_helper($$) {
+	my ($aeh, $sub) = @_;
+	$aeh->on_read(sub {
+		local $_ = $_[0]->rbuf;
+		$_[0]->rbuf = '';
+		$sub->($_);
+	});
+}
+
 sub _reaper {
 	my $waiters = shift;
 	sub {
@@ -694,11 +703,7 @@ sub pipe($$;$) {
 		$sub = $peer
 	}
 	if ($sub) {
-		$self->$what->on_read(sub {
-			local $_ = $_[0]->rbuf;
-			$_[0]->rbuf = '';
-			$sub->($_);
-		})
+		_on_read_helper($self->$what, $sub)
 	} else {
 		AE::log fatal => "cannot handle $peer for $what";
 	}
