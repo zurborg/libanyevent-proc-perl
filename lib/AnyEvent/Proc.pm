@@ -709,6 +709,53 @@ sub pipe($$;$) {
 	}
 }
 
+=method pull($peer)
+
+Pulls any data from another handle to STDID. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an L<IO::Handle> (including any subclass), a L<Coro::Channel> or a GlobRef.
+
+	$proc->pull($socket);
+
+=cut
+
+sub pull($$) {
+	my ($self, $peer) = @_;
+	use Scalar::Util qw(blessed);
+	my $sub;
+	if (blessed $peer) {
+		if ($peer->isa(__PACKAGE__)) {
+			return $peer->pipe($self);
+		} elsif ($peer->isa('AnyEvent::Handle')) {
+			$peer->on_eof(sub {
+				AE::log debug => "$peer->on_eof";
+				$self->finish;
+				shift->destroy;
+			});
+			$peer->on_error(sub {
+				AE::log error => "$peer: ".$_[2];
+				$self->finish;
+				shift->destroy;
+			});
+			return _on_read_helper($peer, sub {
+				AE::log debug => "$peer->on_read";
+				$self->write(shift());
+			});
+		} elsif ($peer->isa('IO::Handle')) {
+			return $self->pull(AnyEvent::Handle->new(fh => $peer))
+		} elsif ($peer->isa('Coro::Channel')) {
+			require Coro;
+			return Coro::async {
+				while (local $_ = $peer->get) {
+					$self->write($_) or last;
+					Coro::cede();
+				}
+			};
+		}
+	} elsif (ref $peer eq 'GLOB') {
+		return $self->pull(AnyEvent::Handle->new(fh => $peer))
+	}
+	AE::log fatal => "cannot handle $peer for stdin";
+}
+
 sub _push_read($$@) {
 	my ($self, $what, @args) = @_;
 	my $ok = 0;
