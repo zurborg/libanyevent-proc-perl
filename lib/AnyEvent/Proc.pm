@@ -38,7 +38,7 @@ Nothing by default. The following functions will be exported on request:
 
 our @EXPORT_OK = qw(run);
 
-sub _rpipe(&) {
+sub _rpipe {
 	my $on_eof = shift;
 	my ($R, $W) = AnyEvent::Util::portable_pipe;
 	my $cv = AE::cv;
@@ -57,7 +57,7 @@ sub _rpipe(&) {
 	);
 }
 
-sub _wpipe(&) {
+sub _wpipe {
 	my $on_eof = shift;
 	my ($R, $W) = AnyEvent::Util::portable_pipe;
 	my $cv = AE::cv;
@@ -76,7 +76,7 @@ sub _wpipe(&) {
 	);
 }
 
-sub _on_read_helper($$) {
+sub _on_read_helper {
 	my ($aeh, $sub) = @_;
 	$aeh->on_read(sub {
 		local $_ = $_[0]->rbuf;
@@ -108,7 +108,7 @@ sub _push_waiter {
 	push @{$self->{waiters}->{$what}} => $var;
 }
 
-sub _run_cmd($$$$$) {
+sub _run_cmd {
 	my ($cmd, $stdin, $stdout, $stderr, $pidref) = @_;
  
 	my $cv = AE::cv;
@@ -257,7 +257,7 @@ Callback handler called when STDERR read inactivity I<etimeout> value exceeds
 
 =cut
 
-sub new($%) {
+sub new {
 	my ($class, %options) = @_;
 	
 	$options{args} ||= [];
@@ -266,9 +266,9 @@ sub new($%) {
 	my $eof_out;
 	my $eof_err;
 	
-	my ($rIN , $wIN , $cvIN ) = _rpipe { $$eof_in->(@_) };
-	my ($rOUT, $wOUT, $cvOUT) = _wpipe { $$eof_out->(@_) };
-	my ($rERR, $wERR, $cvERR) = _wpipe { $$eof_err->(@_) };
+	my ($rIN , $wIN , $cvIN ) = _rpipe sub { $$eof_in->(@_) };
+	my ($rOUT, $wOUT, $cvOUT) = _wpipe sub { $$eof_out->(@_) };
+	my ($rERR, $wERR, $cvERR) = _wpipe sub { $$eof_err->(@_) };
 	
 	my $pid;
 
@@ -395,7 +395,7 @@ The exit-code is stored in C<$?>. Please keep in mind that for portability reaso
 
 =cut
 
-sub run($@) {
+sub run {
 	my ($bin, @args) = @_;
 	my ($out, $err) = ('', '');
 	my $proc = __PACKAGE__->new(bin => $bin, args => \@args, outstr => \$out, errstr => \$err);
@@ -445,7 +445,7 @@ sub err { shift->{err} }
 sub _eol { shift->{eol} }
 sub _reol { shift->{reol} }
 
-sub _emit($$@) {
+sub _emit {
 	my ($self, $name, @args) = @_;
 	AE::log debug => "trapped $name";
 	if (exists $self->{listeners}->{$name} and defined $self->{listeners}->{$name}) {
@@ -459,7 +459,7 @@ Returns the PID of the subprocess
 
 =cut
 
-sub pid($) {
+sub pid {
 	shift->{pid};
 }
 
@@ -469,7 +469,7 @@ Sends a named signal to the subprocess. C<$signal> defaults to I<TERM> if omitte
 
 =cut
 
-sub fire($;$) {
+sub fire {
 	my ($self, $signal) = @_;
 	$signal = 'TERM' unless defined $signal;
 	kill uc $signal => $self->pid;
@@ -484,7 +484,7 @@ Kills the subprocess the most brutal way. Equals to
 
 =cut
 
-sub kill($) {
+sub kill {
 	my ($self) = @_;
 	$self->fire('kill');
 }
@@ -499,7 +499,7 @@ Returns the exit code of the subprocess.
 
 =cut
 
-sub fire_and_kill($$;$) {
+sub fire_and_kill {
 	my $self = shift;
 	my $time = pop;
 	my $signal = uc (pop || 'TERM');
@@ -523,7 +523,7 @@ In fact, the method equals to
 
 =cut
 
-sub alive($) {
+sub alive {
 	shift->fire(0) ? 1 : 0;
 }
 
@@ -533,7 +533,7 @@ Waits for the subprocess to be finished returns the exit code.
 
 =cut
 
-sub wait($) {
+sub wait {
 	my ($self) = @_;
 	my $status = $self->{cv}->recv;
 	waitpid $self->{pid} => 0;
@@ -547,7 +547,7 @@ Closes STDIN of subprocess
 
 =cut
 
-sub finish($) {
+sub finish {
 	my ($self) = @_;
 	$self->in->destroy;
 	$self;
@@ -559,7 +559,7 @@ Closes all handles of subprocess
 
 =cut
 
-sub end($) {
+sub end {
 	my ($self) = @_;
 	$self->in->destroy;
 	$self->out->destroy;
@@ -575,7 +575,7 @@ See I<timeout> and I<on_timeout> options in I<new()>.
 
 =cut
 
-sub stop_timeout($) {
+sub stop_timeout {
 	my ($self) = @_;
 	$self->in->timeout(0);
 	$self->out->timeout(0);
@@ -590,7 +590,7 @@ See I<wtimeout> and I<on_wtimeout> options in I<new()>.
 
 =cut
 
-sub stop_wtimeout($) {
+sub stop_wtimeout {
 	my ($self) = @_;
 	$self->in->wtimeout(0);
 }
@@ -603,7 +603,7 @@ See I<rtimeout> and I<on_rtimeout> options in I<new()>.
 
 =cut
 
-sub stop_rtimeout($) {
+sub stop_rtimeout {
 	my ($self) = @_;
 	$self->out->rtimeout(0);
 }
@@ -616,7 +616,7 @@ See I<etimeout> and I<on_etimeout> options in I<new()>.
 
 =cut
 
-sub stop_etimeout($) {
+sub stop_etimeout {
 	my ($self) = @_;
 	$self->err->rtimeout(0);
 }
@@ -631,7 +631,7 @@ See L<AnyEvent::Handle>::push_write for more information.
 
 =cut
 
-sub write($$;@) {
+sub write {
 	my ($self, $type, @args) = @_;
 	my $ok = 0;
 	try {
@@ -649,7 +649,7 @@ Queues one or more line to be written.
 
 =cut
 
-sub writeln($@) {
+sub writeln {
 	my ($self, @lines) = @_;
 	$self->write($_.$self->_eol) for @lines;
 	$self;
@@ -665,7 +665,7 @@ C<$fd> defaults to I<stdout>.
 
 =cut
 
-sub pipe($$;$) {
+sub pipe {
 	my $self = shift;
 	my $peer = pop;
 	my $what = lc (pop || 'out');
@@ -717,7 +717,7 @@ Pulls any data from another handle to STDIN. C<$peer> maybe another L<AnyEvent::
 
 =cut
 
-sub pull($$) {
+sub pull {
 	my ($self, $peer) = @_;
 	use Scalar::Util qw(blessed);
 	my $sub;
@@ -756,7 +756,7 @@ sub pull($$) {
 	AE::log fatal => "cannot handle $peer for stdin";
 }
 
-sub _push_read($$@) {
+sub _push_read {
 	my ($self, $what, @args) = @_;
 	my $ok = 0;
 	try {
@@ -768,7 +768,7 @@ sub _push_read($$@) {
 	$ok;
 }
 
-sub _unshift_read($$@) {
+sub _unshift_read {
 	my ($self, $what, @args) = @_;
 	my $ok = 0;
 	try {
@@ -780,38 +780,38 @@ sub _unshift_read($$@) {
 	$ok;
 }
 
-sub _readline($$$) {
+sub _readline {
 	my ($self, $what, $sub) = @_;
 	$self->_push_read($what => line => $self->_reol, $sub);
 }
 
-sub _readchunk($$$$) {
+sub _readchunk {
 	my ($self, $what, $bytes, $sub) = @_;
 	$self->_push_read($what => chunk => $bytes => $sub);
 }
 
-sub _sub_cb($) {
+sub _sub_cb {
 	my ($cb) = @_;
 	sub { $cb->($_[1]) }
 }
 
-sub _sub_cv($) {
+sub _sub_cv {
 	my ($cv) = @_;
 	sub { $cv->send($_[1]) }
 }
 
-sub _sub_ch($) {
+sub _sub_ch {
 	my ($ch) = @_;
 	sub { $ch->put($_[1]) }
 }
 
-sub _readline_cb($$$) {
+sub _readline_cb {
 	my ($self, $what, $cb) = @_;
 	$self->_push_waiter($what => $cb);
 	$self->_readline($what => _sub_cb($cb));
 }
 
-sub _readline_cv($$;$) {
+sub _readline_cv {
 	my ($self, $what, $cv) = @_;
 	$cv ||= AE::cv;
 	$self->_push_waiter($what => $cv);
@@ -819,7 +819,7 @@ sub _readline_cv($$;$) {
 	$cv;
 }
 
-sub _readline_ch($$;$) {
+sub _readline_ch {
 	my ($self, $what, $channel) = @_;
 	unless ($channel) {
 		require Coro::Channel;
@@ -830,7 +830,7 @@ sub _readline_ch($$;$) {
 	$channel;
 }
 
-sub _readlines_cb($$$) {
+sub _readlines_cb {
 	my ($self, $what, $cb) = @_;
 	$self->_push_waiter($what => $cb);
 	$self->$what->on_read(sub {
@@ -838,7 +838,7 @@ sub _readlines_cb($$$) {
 	});
 }
 
-sub _readlines_ch($$;$) {
+sub _readlines_ch {
 	my ($self, $what, $channel) = @_;
 	unless ($channel) {
 		require Coro::Channel;
@@ -851,13 +851,13 @@ sub _readlines_ch($$;$) {
 	$channel;
 }
 
-sub _readchunk_cb($$$$) {
+sub _readchunk_cb {
 	my ($self, $what, $bytes, $cb) = @_;
 	$self->_push_waiter($what => $cb);
 	$self->_readchunk($what, $bytes, _sub_cb($cb));
 }
 
-sub _readchunk_cv($$$;$) {
+sub _readchunk_cv {
 	my ($self, $what, $bytes, $cv) = @_;
 	$cv ||= AE::cv;
 	$self->_push_waiter($what => $cv);
@@ -865,7 +865,7 @@ sub _readchunk_cv($$$;$) {
 	$cv;
 }
 
-sub _readchunk_ch($$$;$) {
+sub _readchunk_ch {
 	my ($self, $what, $bytes, $channel) = @_;
 	unless ($channel) {
 		require Coro::Channel;
@@ -876,7 +876,7 @@ sub _readchunk_ch($$$;$) {
 	$channel;
 }
 
-sub _readchunks_ch($$$;$) {
+sub _readchunks_ch {
 	my ($self, $what, $bytes, $channel) = @_;
 	unless ($channel) {
 		require Coro::Channel;
@@ -895,7 +895,7 @@ Reads a single line from STDOUT and calls C<$callback>
 
 =cut
 
-sub readline_cb($$) {
+sub readline_cb {
 	my ($self, $cb) = @_;
 	$self->_readline_cb(out => $cb);
 }
@@ -906,7 +906,7 @@ Reads a single line from STDOUT and send the result to C<$condvar>. A condition 
 
 =cut
 
-sub readline_cv($;$) {
+sub readline_cv {
 	my ($self, $cv) = @_;
 	$self->_readline_cv(out => $cv);
 }
@@ -917,7 +917,7 @@ Reads a singe line from STDOUT and put the result to coro channel C<$channel>. A
 
 =cut
 
-sub readline_ch($;$) {
+sub readline_ch {
 	my ($self, $ch) = @_;
 	$self->_readline_ch(out => $ch);
 }
@@ -928,7 +928,7 @@ Read lines continiously from STDOUT and calls on every line the handler C<$callb
 
 =cut
 
-sub readlines_cb($$) {
+sub readlines_cb {
 	my ($self, $cb) = @_;
 	$self->_readlines_cb(out => $cb);
 }
@@ -939,7 +939,7 @@ Read lines continiously from STDOUT and put every line to coro channel C<$channe
 
 =cut
 
-sub readlines_ch($;$) {
+sub readlines_ch {
 	my ($self, $ch) = @_;
 	$self->_readlines_ch(out => $ch);
 }
@@ -954,7 +954,7 @@ Same as
 
 =cut
 
-sub readline($) {
+sub readline {
 	shift->readline_cv->recv
 }
 
@@ -964,7 +964,7 @@ Bevahes equivalent as I<readline_cb>, but for STDERR.
 
 =cut
 
-sub readline_error_cb($$) {
+sub readline_error_cb {
 	my ($self, $cb) = @_;
 	$self->_readline_cb(err => $cb);
 }
@@ -975,7 +975,7 @@ Bevahes equivalent as I<readline_cv>, but for STDERR.
 
 =cut
 
-sub readline_error_cv($;$) {
+sub readline_error_cv {
 	my ($self, $cv) = @_;
 	$self->_readline_cv(err => $cv);
 }
@@ -986,7 +986,7 @@ Bevahes equivalent as I<readline_ch>, but for STDERR.
 
 =cut
 
-sub readline_error_ch($;$) {
+sub readline_error_ch {
 	my ($self, $ch) = @_;
 	$self->_readline_ch(err => $ch);
 }
@@ -997,7 +997,7 @@ Bevahes equivalent as I<readlines_cb>, but for STDERR.
 
 =cut
 
-sub readlines_error_cb($$) {
+sub readlines_error_cb {
 	my ($self, $cb) = @_;
 	$self->_readlines_cb(out => $cb);
 }
@@ -1008,7 +1008,7 @@ Bevahes equivalent as I<readlines_ch>, but for STDERR.
 
 =cut
 
-sub readlines_error_ch($;$) {
+sub readlines_error_ch {
 	my ($self, $ch) = @_;
 	$self->_readlines_ch(out => $ch);
 }
@@ -1019,7 +1019,7 @@ Bevahes equivalent as I<readline>, but for STDERR.
 
 =cut
 
-sub readline_error($) {
+sub readline_error {
 	shift->readline_error_cv->recv
 }
 
