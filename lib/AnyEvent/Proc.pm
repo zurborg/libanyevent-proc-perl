@@ -32,11 +32,15 @@ Nothing by default. The following functions will be exported on request:
 
 =item * L</run>
 
+=item * L</reader>
+
+=item * L</writer>
+
 =back
 
 =cut
 
-our @EXPORT_OK = qw(run);
+our @EXPORT_OK = qw(run reader writer);
 
 sub _rpipe {
 	my $on_eof = shift;
@@ -265,37 +269,18 @@ sub new {
 	my ($rOUT, $wOUT, $cvOUT) = _wpipe sub { $$eof_out->(@_) };
 	my ($rERR, $wERR, $cvERR) = _wpipe sub { $$eof_err->(@_) };
 	
+	my @xhs = @{ delete($options{extras}) || [] };
+
+	my @args = map { "$_" } @{delete $options{args}};
+
+	my $pid;
+
 	my %redir = (
 		0 => $rIN,
 		1 => $wOUT,
 		2 => $wERR,
+		map {( "$_" => $_->B )} @xhs
 	);
-
-	my $me = quotemeta(__PACKAGE__.'::');
-	my $qr = qr{^ $me ([RW]) $}x;
-	my %xhs;
-	my @xhs;
-	my @args = map {
-		if (ref ($_) =~ $qr) {
-			my $h = $_;
-			push @xhs => $h;
-			if ($1 eq 'R') {
-				my $fd = fileno($h->{r}->fh);
-				$xhs{$h} = $h->{r};
-				$redir{$fd} = $h->{w};
-				$fd;
-			} elsif ($1 eq 'W') {
-				my $fd = fileno($h->{w}->fh);
-				$xhs{$h} = $h->{w};
-				$redir{$fd} = $h->{r};
-				$fd;
-			}
-		} else {
-			$_
-		}
-	} @{delete $options{args}};
-
-	my $pid;
 
 	my $cv = _run_cmd([ delete $options{bin} => @args ], \%redir, \$pid);
 	
@@ -304,7 +289,7 @@ sub new {
 			in => $wIN,
 			out => $rOUT,
 			err => $rERR,
-			%xhs,
+			map {( "$_" => $_->A )} @xhs,
 		},
 		pid => $pid,
 		listeners => {
@@ -412,6 +397,46 @@ sub new {
 
 =func reader()
 
+Creates a new file descriptor for pulling data from process.
+
+	use AnyEvent::Proc qw(reader);
+	my $reader = reader();
+	my $proc = AnyEvent::Proc->new(
+		bin => '/bin/sh',
+		args => [ -c => "echo hi >&$reader" ] # overloads to fileno
+		extras => [ $reader ], # unordered list of all extra descriptors
+	);
+	my $out;
+	$reader->pipe(\$out);
+	$proc->wait;
+	# $out contains now 'hi'
+
+This calls C</bin/sh -c "echo hi >&3">, so that any output will be dupped into fd #3.
+
+C<$reader> provides following methods:
+
+=over 4
+
+=item * L</on_timeout>
+
+=item * L</stop_timeout>
+
+=item * L</pipe>
+
+=item * L</readline_cb>
+
+=item * L</readline_cv>
+
+=item * L</readline_ch>
+
+=item * L</readlines_cb>
+
+=item * L</readlines_ch>
+
+=item * L</readline>
+
+=back
+
 =cut
 
 sub reader {
@@ -421,6 +446,43 @@ sub reader {
 }
 
 =func writer()
+
+Creates a new file descriptor for pushing data to process.
+
+	use AnyEvent::Proc qw(writer);
+	my $writer = writer();
+	my $out;
+	my $proc = AnyEvent::Proc->new(
+		bin => '/bin/sh',
+		args => [ -c => "cat <&$writer" ] # overloads to fileno
+		extras => [ $writer ], # unordered list of all extra descriptors
+		outstr => \$out,
+	);
+	my $out;
+	$writer->writeln('hi');
+	$writer->finish;
+	$proc->wait;
+	# $out contains now 'hi'
+
+This calls C</bin/sh -c "cat <&3">, so that any input will be dupped from fd #3.
+
+C<$writer> provides following methods:
+
+=over 4
+
+=item * L</finish>
+
+=item * L</on_timeout>
+
+=item * L</stop_timeout>
+
+=item * L</write>
+
+=item * L</writeln>
+
+=back
+
+Unfortunally L</pull> is unimplemented.
 
 =cut
 
@@ -1094,12 +1156,18 @@ AnyEvent::post_detect {
 package
 	AnyEvent::Proc::R;
 
+use overload
+	'""' => sub { fileno shift->A->fh };
+
+sub A { shift->{r} }
+sub B { shift->{w} }
+
 sub on_timeout {
-	shift->{r}->on_wtimeout(pop);
+	shift->A->on_wtimeout(pop);
 }
 
 sub stop_timeout {
-	shift->{r}->stop_wtimeout;
+	shift->A->stop_wtimeout;
 }
 
 sub pipe {
@@ -1142,25 +1210,31 @@ sub readline {
 package
 	AnyEvent::Proc::W;
 
+use overload
+	'""' => sub { fileno shift->A->fh };
+
 use Try::Tiny;
 
+sub A { shift->{w} }
+sub B { shift->{r} }
+
 sub finish {
-	shift->{w}->destroy;
+	shift->A->destroy;
 }
 
 sub on_timeout {
-	shift->{w}->on_rtimeout(pop);
+	shift->A->on_rtimeout(pop);
 }
 
 sub stop_timeout {
-	shift->{w}->stop_rtimeout;
+	shift->A->stop_rtimeout;
 }
 
 sub write {
 	my ($self, $type, @args) = @_;
 	my $ok = 0;
 	try {
-		$self->{w}->push_write($type => @args);
+		$self->A->push_write($type => @args);
 		$ok = 1;
 	} catch {
 		AE::log warn => $_;

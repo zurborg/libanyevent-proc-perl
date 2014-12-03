@@ -16,7 +16,7 @@ SKIP: {
 	my $h1 = AnyEvent::Proc::reader();
 	my $h1out = '';
 
-	$proc = AnyEvent::Proc->new(bin => $bin, args => [ -c => 'echo hi >&$0', $h1 ], ttl => 5, outstr => \$out, errstr => \$err);
+	$proc = AnyEvent::Proc->new(bin => $bin, args => [ -c => "echo hi >&$h1" ], ttl => 5, outstr => \$out, errstr => \$err, extras => [ $h1 ]);
 	$h1->pipe(\$h1out);
 
 	$proc->finish;
@@ -27,7 +27,7 @@ SKIP: {
 
 	my $h2 = AnyEvent::Proc::writer();
 	
-	$proc = AnyEvent::Proc->new(bin => $bin, args => [ -c => 'cat <&$0', $h2 ], ttl => 5, outstr => \$out, errstr => \$err);
+	$proc = AnyEvent::Proc->new(bin => $bin, args => [ -c => "cat <&$h2" ], ttl => 5, outstr => \$out, errstr => \$err, extras => [ $h2 ]);
 	$h2->writeln('hi');
 	$h2->finish;
 	$proc->finish;
