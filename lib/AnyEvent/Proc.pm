@@ -109,16 +109,12 @@ sub _push_waiter {
 }
 
 sub _run_cmd {
-	my ($cmd, $stdin, $stdout, $stderr, $pidref) = @_;
+	my ($cmd, $redir, $pidref) = @_;
  
 	my $cv = AE::cv;
- 
-	my %redir = (
-		0 => $stdin,
-		1 => $stdout,
-		2 => $stderr,
-	);
 	
+	my %redir = %$redir;
+
 	my $pid = fork;
 	AE::log error => "cannot fork: $!" unless defined $pid;
  
@@ -143,12 +139,11 @@ sub _run_cmd {
 				or POSIX::_exit (123);
 		}
  
-		# close everything else, except 0, 1, 2
-        AnyEvent::Util::close_all_fds_except 0, 1, 2;
+		AnyEvent::Util::close_all_fds_except(keys %redir);
  
 		my $bin = $cmd->[0];
 
-		no warnings;
+		no warnings; ## no critic
 
 		exec { $bin } @$cmd;
 
@@ -270,14 +265,47 @@ sub new {
 	my ($rOUT, $wOUT, $cvOUT) = _wpipe sub { $$eof_out->(@_) };
 	my ($rERR, $wERR, $cvERR) = _wpipe sub { $$eof_err->(@_) };
 	
+	my %redir = (
+		0 => $rIN,
+		1 => $wOUT,
+		2 => $wERR,
+	);
+
+	my $me = quotemeta(__PACKAGE__.'::');
+	my $qr = qr{^ $me ([RW]) $}x;
+	my %xhs;
+	my @xhs;
+	my @args = map {
+		if (ref ($_) =~ $qr) {
+			my $h = $_;
+			push @xhs => $h;
+			if ($1 eq 'R') {
+				my $fd = fileno($h->{r}->fh);
+				$xhs{$h} = $h->{r};
+				$redir{$fd} = $h->{w};
+				$fd;
+			} elsif ($1 eq 'W') {
+				my $fd = fileno($h->{w}->fh);
+				$xhs{$h} = $h->{w};
+				$redir{$fd} = $h->{r};
+				$fd;
+			}
+		} else {
+			$_
+		}
+	} @{delete $options{args}};
+
 	my $pid;
 
-	my $cv = _run_cmd([ delete $options{bin} => @{delete $options{args}} ], $rIN, $wOUT, $wERR, \$pid);
+	my $cv = _run_cmd([ delete $options{bin} => @args ], \%redir, \$pid);
 	
 	my $self = bless {
-		in => $wIN,
-		out => $rOUT,
-		err => $rERR,
+		handles => {
+			in => $wIN,
+			out => $rOUT,
+			err => $rERR,
+			%xhs,
+		},
 		pid => $pid,
 		listeners => {
 			exit => delete $options{on_exit},
@@ -294,6 +322,9 @@ sub new {
 			err => [],
 		},
 	} => ref $class || $class;
+
+	map { $_->{proc} = $self } @xhs;
+
 	{
 		my $eol = quotemeta $self->_eol;
 		$self->{reol} = delete $options{reol} || qr{$eol};
@@ -379,6 +410,26 @@ sub new {
 	$self;
 }
 
+=func reader()
+
+=cut
+
+sub reader {
+	my $eof = sub {};
+	my ($r, $w, $cv) = _wpipe sub { $$eof->(@_) };
+	bless { r => $r, w => $w, eof => $eof, cv => $cv } => __PACKAGE__.'::R';
+}
+
+=func writer()
+
+=cut
+
+sub writer {
+	my $eof = sub {};
+	my ($r, $w, $cv) = _rpipe sub { $$eof->(@_) };
+	bless { r => $r, w => $w, eof => $eof, cv => $cv } => __PACKAGE__.'::W';
+}
+
 =func run($bin[, @args])
 
 Bevahes similar to L<perlfunc/system>. In scalar context, it returns STDOUT of the subprocess. STDERR will be passed-through by L<perlfunc/warn>.
@@ -424,7 +475,7 @@ Useful for piping data into us:
 
 =cut
 
-sub in  { shift->{in}  }
+sub in  { shift->_geth('in')  }
 
 =method out()
 
@@ -432,7 +483,7 @@ Returns a L<AnyEvent::Handle> for STDOUT
 
 =cut
 
-sub out { shift->{out} }
+sub out { shift->_geth('out') }
 
 =method err()
 
@@ -440,7 +491,11 @@ Returns a L<AnyEvent::Handle> for STDERR
 
 =cut
 
-sub err { shift->{err} }
+sub err { shift->_geth('err') }
+
+sub _geth {
+	shift->{handles}->{pop()}
+}
 
 sub _eol { shift->{eol} }
 sub _reol { shift->{reol} }
@@ -635,7 +690,7 @@ sub write {
 	my ($self, $type, @args) = @_;
 	my $ok = 0;
 	try {
-		$self->{in}->push_write($type => @args);
+		$self->_geth('in')->push_write($type => @args);
 		$ok = 1;
 	} catch {
 		AE::log warn => $_;
@@ -668,8 +723,13 @@ C<$fd> defaults to I<stdout>.
 sub pipe {
 	my $self = shift;
 	my $peer = pop;
-	my $what = lc (pop || 'out');
-	$what =~ s{^std}{};
+	my $what = (pop || 'out');
+	if (ref $what) {
+		$what = "$what";
+	} else {
+		$what = lc $what;
+		$what =~ s{^std}{};
+	}
 	use Scalar::Util qw(blessed);
 	my $sub;
 	if (blessed $peer) {
@@ -703,7 +763,7 @@ sub pipe {
 		$sub = $peer
 	}
 	if ($sub) {
-		_on_read_helper($self->$what, $sub)
+		_on_read_helper($self->_geth($what), $sub)
 	} else {
 		AE::log fatal => "cannot handle $peer for $what";
 	}
@@ -760,7 +820,7 @@ sub _push_read {
 	my ($self, $what, @args) = @_;
 	my $ok = 0;
 	try {
-		$self->{$what}->push_read(@args);
+		$self->_geth($what)->push_read(@args);
 		$ok = 1;
 	} catch {
 		AE::log warn => "cannot push_read from std$what: $_";
@@ -772,7 +832,7 @@ sub _unshift_read {
 	my ($self, $what, @args) = @_;
 	my $ok = 0;
 	try {
-		$self->{$what}->unshift_read(@args);
+		$self->_geth($what)->unshift_read(@args);
 		$ok = 1;
 	} catch {
 		AE::log warn => "cannot unshift_read from std$what: $_";
@@ -833,7 +893,7 @@ sub _readline_ch {
 sub _readlines_cb {
 	my ($self, $what, $cb) = @_;
 	$self->_push_waiter($what => $cb);
-	$self->$what->on_read(sub {
+	$self->_geth($what)->on_read(sub {
 		$self->_readline($what => _sub_cb($cb));
 	});
 }
@@ -845,7 +905,7 @@ sub _readlines_ch {
 		$channel ||= Coro::Channel->new;
 	}
 	$self->_push_waiter($what => $channel);
-	$channel->shutdown unless $self->$what->on_read(sub {
+	$channel->shutdown unless $self->_geth($what)->on_read(sub {
 		$self->_readline($what => _sub_ch($channel));
 	});
 	$channel;
@@ -883,7 +943,7 @@ sub _readchunks_ch {
 		$channel ||= Coro::Channel->new;
 	}
 	$self->_push_waiter($what => $channel);
-	$channel->shutdown unless $self->$what->on_read(sub {
+	$channel->shutdown unless $self->_geth($what)->on_read(sub {
 		$self->_readline($what => _sub_ch($channel));
 	});
 	$channel;
@@ -1028,5 +1088,93 @@ sub readline_error {
 AnyEvent::post_detect {
 	AE::child $$ => sub {};
 };
+
+1;
+
+package
+	AnyEvent::Proc::R;
+
+sub on_timeout {
+	shift->{r}->on_wtimeout(pop);
+}
+
+sub stop_timeout {
+	shift->{r}->stop_wtimeout;
+}
+
+sub pipe {
+	my ($self, $peer) = @_;
+	$self->{proc}->pipe($self => $peer);
+}
+
+sub readline_cb {
+	my ($self, $cb) = @_;
+	$self->{proc}->_readline_cb($self => $cb);
+}
+
+sub readline_cv {
+	my ($self, $cv) = @_;
+	$self->{proc}->_readline_cv($self => $cv);
+}
+
+sub readline_ch {
+	my ($self, $ch) = @_;
+	$self->{proc}->_readline_ch($self => $ch);
+}
+
+sub readlines_cb {
+	my ($self, $cb) = @_;
+	$self->{proc}->_readlines_cb($self => $cb);
+}
+
+sub readlines_ch {
+	my ($self, $ch) = @_;
+	$self->{proc}->_readlines_cb($self => $ch);
+}
+
+sub readline {
+	shift->readline_cv->recv
+}
+
+
+1;
+
+package
+	AnyEvent::Proc::W;
+
+use Try::Tiny;
+
+sub finish {
+	shift->{w}->destroy;
+}
+
+sub on_timeout {
+	shift->{w}->on_rtimeout(pop);
+}
+
+sub stop_timeout {
+	shift->{w}->stop_rtimeout;
+}
+
+sub write {
+	my ($self, $type, @args) = @_;
+	my $ok = 0;
+	try {
+		$self->{w}->push_write($type => @args);
+		$ok = 1;
+	} catch {
+		AE::log warn => $_;
+	};
+	$ok;
+}
+
+sub writeln {
+	my ($self, @lines) = @_;
+	my $eol = $self->{proc}->_eol;
+	$self->write($_.$eol) for @lines;
+	$self;
+}
+
+sub pull { die 'UNIMPLEMENTED' }
 
 1;
