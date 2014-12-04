@@ -3,6 +3,8 @@ Revision history for AnyEvent-Proc
 {{$NEXT}}
  - new method "pull"
  - remove subroutine prototypes
+ - allow additional descriptors via new functions reader() and writer()
+ - tidy up code
 
 0.101 2014-11-27
  - new function "run"
