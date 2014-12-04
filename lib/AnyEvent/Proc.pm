@@ -93,6 +93,14 @@ sub _on_read_helper {
     );
 }
 
+sub _read_on_scalar {
+    my ( $var, $sub ) = @_;
+    my $old = $$var || '';
+    tie $$var, __PACKAGE__ . '::TiedScalar', $sub;
+    $$var = $old;
+    $var;
+}
+
 sub _reaper {
     my ( $self, $waiters ) = @_;
     my $sub = sub {
@@ -895,7 +903,7 @@ sub pipe {
 
 =method pull($peer)
 
-Pulls any data from another handle to STDIN. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an L<IO::Handle> (including any subclass), a L<Coro::Channel> or a GlobRef.
+Pulls any data from another handle to STDIN. C<$peer> maybe another L<AnyEvent::Proc> instance, an L<AnyEvent::Handle>, an L<IO::Handle> (including any subclass), a L<Coro::Channel>, a ScalarRef or a GlobRef.
 
 	$proc->pull($socket);
 
@@ -944,6 +952,15 @@ sub pull {
                 }
             };
         }
+    }
+    elsif ( ref $peer eq 'SCALAR' ) {
+        return _read_on_scalar(
+            $peer,
+            sub {
+                AE::log debug => "$peer->STORE";
+                $self->write( shift() );
+            }
+        );
     }
     elsif ( ref $peer eq 'GLOB' ) {
         return $self->pull( AnyEvent::Handle->new( fh => $peer ) );
@@ -1234,7 +1251,8 @@ AnyEvent::post_detect {
 
 1;
 
-package AnyEvent::Proc::R;
+package    # hidden
+  AnyEvent::Proc::R;
 
 use overload '""' => sub { shift->{fileno} };
 
@@ -1285,7 +1303,8 @@ sub readline {
 
 1;
 
-package AnyEvent::Proc::W;
+package    # hidden
+  AnyEvent::Proc::W;
 
 use overload '""' => sub { shift->{fileno} };
 
@@ -1327,5 +1346,26 @@ sub writeln {
 }
 
 sub pull { die 'UNIMPLEMENTED' }
+
+1;
+
+package    # hidden
+  AnyEvent::Proc::TiedScalar;
+
+use Tie::Scalar;
+
+our @ISA = ('Tie::Scalar');
+
+sub TIESCALAR {
+    bless pop, shift;
+}
+
+sub FETCH {
+    undef;
+}
+
+sub STORE {
+    shift->(pop);
+}
 
 1;
