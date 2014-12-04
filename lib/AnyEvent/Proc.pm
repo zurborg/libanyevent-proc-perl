@@ -450,7 +450,7 @@ C<$reader> provides following methods:
 sub reader {
 	my $eof = sub {};
 	my ($r, $w, $cv) = _wpipe sub { $$eof->(@_) };
-	bless { r => $r, w => $w, eof => $eof, cv => $cv } => __PACKAGE__.'::R';
+	bless { r => $r, w => $w, eof => $eof, cv => $cv, fileno => fileno($r->fh) } => __PACKAGE__.'::R';
 }
 
 =func writer()
@@ -497,7 +497,7 @@ Unfortunally L</pull> is unimplemented.
 sub writer {
 	my $eof = sub {};
 	my ($r, $w, $cv) = _rpipe sub { $$eof->(@_) };
-	bless { r => $r, w => $w, eof => $eof, cv => $cv } => __PACKAGE__.'::W';
+	bless { r => $r, w => $w, eof => $eof, cv => $cv, fileno => fileno($w->fh) } => __PACKAGE__.'::W';
 }
 
 =func run($bin[, @args])
@@ -1165,7 +1165,7 @@ package
 	AnyEvent::Proc::R;
 
 use overload
-	'""' => sub { fileno shift->A->fh };
+	'""' => sub { shift->{fileno} };
 
 sub A { shift->{r} }
 sub B { shift->{w} }
@@ -1219,7 +1219,7 @@ package
 	AnyEvent::Proc::W;
 
 use overload
-	'""' => sub { fileno shift->A->fh };
+	'""' => sub { shift->{fileno} };
 
 use Try::Tiny;
 
