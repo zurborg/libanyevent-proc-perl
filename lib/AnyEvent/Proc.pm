@@ -304,6 +304,7 @@ sub new {
 		},
 		eol => "\n",
 		cv => $cv,
+		alive => 1,
 		waiters => {
 			in => [],
 			out => [],
@@ -389,6 +390,7 @@ sub new {
 	$$eof_err = sub { $self->_emit(eof_stderr => @_); };
 	
 	$cv->cb(sub {
+		$self->{alive} = 0;
 		undef $w;
 		$self->_emit(exit => shift->recv);
 	});
@@ -646,7 +648,9 @@ In fact, the method equals to
 =cut
 
 sub alive {
-	shift->fire(0) ? 1 : 0;
+	my $self = shift;
+	return 0 unless $self->{alive};
+	$self->fire(0) ? 1 : 0;
 }
 
 =method wait()
