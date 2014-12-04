@@ -83,28 +83,30 @@ sub _wpipe {
 sub _on_read_helper {
 	my ($aeh, $sub) = @_;
 	$aeh->on_read(sub {
-		local $_ = $_[0]->rbuf;
+		my $x = $_[0]->rbuf;
 		$_[0]->rbuf = '';
-		$sub->($_);
+		$sub->($x);
 	});
 }
 
 sub _reaper {
-	my $waiters = shift;
-	sub {
+	my ($self, $waiters) = @_;
+	my $sub = sub {
 		# my $message = shift; # currently unused
-		foreach (@$waiters) {
-			if (ref $_ eq 'CODE') {
-				$_->(undef);
-			} elsif (ref $_ eq 'AnyEvent::CondVar') {
-				$_->send(undef);
-			} elsif (ref $_ eq 'Coro::Channel') {
-				$_->shutdown;
+		foreach my $waiter (@$waiters) {
+			AE::log debug => "reap $waiter";
+			if (ref $waiter eq 'CODE') {
+				$waiter->(undef);
+			} elsif (ref $waiter eq 'AnyEvent::CondVar') {
+				$waiter->send(undef);
+			} elsif (ref $waiter eq 'Coro::Channel') {
+				$waiter->shutdown;
 			} else {
-				AE::log note => "cannot reap $_";
+				AE::log note => "cannot reap $waiter";
 			}
 		}
-	}
+	};
+	$sub;
 }
 
 sub _push_waiter {
@@ -814,8 +816,7 @@ sub pipe {
 		}
 	} elsif (ref $peer eq 'SCALAR') {
 		$sub = sub {
-			local $_ = shift;
-			$$peer .= $_;
+			$$peer .= shift;
 		}
 	} elsif (ref $peer eq 'GLOB') {
 		$sub = sub {
@@ -866,8 +867,8 @@ sub pull {
 		} elsif ($peer->isa('Coro::Channel')) {
 			require Coro;
 			return Coro::async {
-				while (local $_ = $peer->get) {
-					$self->write($_) or last;
+				while (my $x = $peer->get) {
+					$self->write($x) or last;
 					Coro::cede();
 				}
 			};
