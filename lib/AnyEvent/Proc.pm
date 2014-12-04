@@ -106,6 +106,7 @@ sub _reaper {
 			}
 		}
 	};
+	push @{$self->{reapers}} => $sub;
 	$sub;
 }
 
@@ -308,6 +309,7 @@ sub new {
 			out => [],
 			err => [],
 		},
+		reapers => [],
 	} => ref $class || $class;
 
 	map { $_->{proc} = $self } @xhs;
@@ -377,9 +379,10 @@ sub new {
 		$self->pipe(out => $sref);
 	}
 	
-	$cvIN->cb(_reaper($self->{waiters}->{in}));
-	$cvOUT->cb(_reaper($self->{waiters}->{out}));
-	$cvERR->cb(_reaper($self->{waiters}->{err}));
+	$cvIN->cb($self->_reaper($self->{waiters}->{in}));
+	$cvOUT->cb($self->_reaper($self->{waiters}->{out}));
+	$cvERR->cb($self->_reaper($self->{waiters}->{err}));
+	map { $_->{cv}->cb($self->_reaper($self->{waiters}->{"$_"})) } @xhs;
 	
 	$$eof_in  = sub { $self->_emit(eof_stdin  => @_); };
 	$$eof_out = sub { $self->_emit(eof_stdout => @_); };
