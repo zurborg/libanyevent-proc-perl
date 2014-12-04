@@ -309,6 +309,7 @@ sub new {
 			in => [],
 			out => [],
 			err => [],
+			map {( "$_" => [] )} @xhs
 		},
 		reapers => [],
 	} => ref $class || $class;
@@ -687,9 +688,8 @@ Closes all handles of subprocess
 
 sub end {
 	my ($self) = @_;
-	$self->in->destroy;
-	$self->out->destroy;
-	$self->err->destroy;
+	map { $_->destroy } values %{$self->{handles}};
+	map { $_->() } @{$self->{reapers}};
 	$self;
 }
 
