@@ -568,7 +568,8 @@ sub run {
             $cv->send( \@_ );
         }
     );
-    my ( $out, $err ) = @{ $cv->recv };
+    my ( $out, $err, $status ) = @{ $cv->recv };
+    $? = $status << 8;
     if (wantarray) {
         return ( $out, $err );
     }
@@ -603,8 +604,9 @@ sub run_cb {
     $proc->finish;
     $proc->wait(
         sub {
-            $? = shift() << 8;
-            $cb->( $out, $err );
+            my $status = shift;
+            $? = $status << 8;
+            $cb->( $out, $err, $status );
         }
     );
 }
