@@ -1,9 +1,10 @@
 #!perl
 
 use Test::Most;
-use AnyEvent::Proc qw(run);
+use AnyEvent;
+use AnyEvent::Proc qw(run run_cb);
 
-plan tests => 4;
+plan tests => 5;
 
 my ( $out, $err );
 
@@ -29,6 +30,15 @@ SKIP: {
     run($bin);
     is $?>> 8 => 1,
       'exit code is properly saved in $?';
+}
+
+SKIP: {
+    my $bin = '/bin/echo';
+    skip "executable $bin not available", 1 unless -x $bin;
+    my $cv = AE::cv;
+    run_cb( $bin => $$, sub { $cv->send(@_) } );
+    my ($out) = $cv->recv;
+    like $out => qr{^$$\s*$}, 'run_cb works as expected';
 }
 
 done_testing;

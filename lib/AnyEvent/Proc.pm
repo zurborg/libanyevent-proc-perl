@@ -34,6 +34,8 @@ Nothing by default. The following functions will be exported on request:
 
 =item * L</run>
 
+=item * L</run_cb>
+
 =item * L</reader>
 
 =item * L</writer>
@@ -42,7 +44,7 @@ Nothing by default. The following functions will be exported on request:
 
 =cut
 
-our @EXPORT_OK = qw(run reader writer);
+our @EXPORT_OK = qw(run run_cb reader writer);
 
 sub _rpipe {
     my $on_eof = shift;
@@ -559,7 +561,38 @@ The exit-code is stored in C<$?>. Please keep in mind that for portability reaso
 =cut
 
 sub run {
-    my ( $bin, @args ) = @_;
+    my $cv = AE::cv;
+    run_cb(
+        @_,
+        sub {
+            $cv->send( \@_ );
+        }
+    );
+    my ( $out, $err ) = @{ $cv->recv };
+    if (wantarray) {
+        return ( $out, $err );
+    }
+    else {
+        warn $err if $err;
+        return $out;
+    }
+}
+
+=func run_cb($bin[, @args], $callback)
+
+Like L</run>, but asynchronous will callback. Returns the condvar. See L</wait> for more information.
+
+	AnyEvent::Proc::run_cb($bin, @args, sub {
+		my ($out, $err) = @_;
+		...;
+	});
+
+=cut
+
+sub run_cb {
+    my $bin  = shift;
+    my $cb   = pop;
+    my @args = @_;
     my ( $out, $err ) = ( '', '' );
     my $proc = __PACKAGE__->new(
         bin    => $bin,
@@ -568,14 +601,12 @@ sub run {
         errstr => \$err
     );
     $proc->finish;
-    $? = $proc->wait << 8;
-    if (wantarray) {
-        return ( $out, $err );
-    }
-    else {
-        warn $err if $err;
-        return $out;
-    }
+    $proc->wait(
+        sub {
+            $? = shift() << 8;
+            $cb->( $out, $err );
+        }
+    );
 }
 
 sub _on {
@@ -664,18 +695,19 @@ sub kill {
     $self->fire('kill');
 }
 
-=method fire_and_kill([$signal, ]$time)
+=method fire_and_kill([$signal, ]$time[, $callback])
 
 Fires specified signal C<$signal> (or I<TERM> if omitted) and after C<$time> seconds kills the subprocess.
 
-This is a synchronous call. After this call, the subprocess can be considered to be dead.
+See L</wait> for the meaning of the callback parameter and return value.
 
-Returns the exit code of the subprocess.
+Without calllback, this is a synchronous call. After this call, the subprocess can be considered to be dead. Returns the exit code of the subprocess.
 
 =cut
 
 sub fire_and_kill {
     my $self   = shift;
+    my $cb     = ( ref $_[-1] eq 'CODE' ? pop : undef );
     my $time   = pop;
     my $signal = uc( pop || 'TERM' );
     my $w      = AnyEvent->timer(
@@ -686,9 +718,19 @@ sub fire_and_kill {
         }
     );
     $self->fire($signal);
-    my $exit = $self->wait;
-    undef $w;
-    $exit;
+    if ($cb) {
+        return $self->wait(
+            sub {
+                undef $w;
+                $cb->(@_);
+            }
+        );
+    }
+    else {
+        my $exit = $self->wait;
+        undef $w;
+        return $exit;
+    }
 }
 
 =method alive()
@@ -707,18 +749,37 @@ sub alive {
     $self->fire(0) ? 1 : 0;
 }
 
-=method wait()
+=method wait([$callback])
 
-Waits for the subprocess to be finished returns the exit code.
+Waits for the subprocess to be finished call the callback with the exit code. Returns a condvar, sended with the result of the callback.
+
+Without callback, this is a synchronous call returning the exit code.
 
 =cut
 
 sub wait {
-    my ($self) = @_;
-    my $status = $self->{cv}->recv;
-    waitpid $self->{pid} => 0;
-    $self->end;
-    $status;
+    my ( $self, $cb ) = @_;
+    my $next = sub {
+        my $status = $self->{cv}->recv;
+        waitpid $self->{pid} => 0;
+        $self->end;
+        $status;
+    };
+    if ($cb) {
+        my $old_cb = $self->{cv}->cb || sub { };
+        my $cv = AE::cv;
+        $self->{cv}->cb(
+            sub {
+                $old_cb->(@_);
+                my $status = $next->();
+                $cv->send( $cb->($status) );
+            }
+        );
+        return $cv;
+    }
+    else {
+        return $next->();
+    }
 }
 
 =method finish()
