@@ -2,6 +2,7 @@ Revision history for AnyEvent-Proc
 
 {{$NEXT}}
  - allow scalarref for pull()
+ - support callback for wait()
 
 0.102 2014-12-04
  - new method "pull"
