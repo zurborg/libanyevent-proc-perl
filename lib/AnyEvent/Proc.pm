@@ -573,7 +573,7 @@ sub run {
         return ( $out, $err );
     }
     else {
-        warn $err if $err;
+        carp $err if $err;
         return $out;
     }
 }
