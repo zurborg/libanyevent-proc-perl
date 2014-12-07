@@ -449,7 +449,7 @@ Creates a new file descriptor for pulling data from process.
 	$proc->wait;
 	# $out contains now 'hi'
 
-This calls C</bin/sh -c "echo hi >&3">, so that any output will be dupped into fd #3.
+This calls C<< /bin/sh -c "echo hi >&3" >>, so that any output will be dupped into fd #3.
 
 C<$reader> provides following methods:
 
@@ -581,10 +581,10 @@ sub run {
 
 =func run_cb($bin[, @args], $callback)
 
-Like L</run>, but asynchronous will callback. Returns the condvar. See L</wait> for more information.
+Like L</run>, but asynchronous with callback handler. Returns the condvar. See L</wait> for more information.
 
 	AnyEvent::Proc::run_cb($bin, @args, sub {
-		my ($out, $err) = @_;
+		my ($out, $err, $status) = @_;
 		...;
 	});
 
