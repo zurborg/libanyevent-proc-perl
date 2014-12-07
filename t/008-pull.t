@@ -5,6 +5,11 @@ use AnyEvent;
 use AnyEvent::Proc;
 use IO::Pipe;
 
+BEGIN {
+    delete @ENV{qw{ LANG LANGUAGE }};
+    $ENV{LC_ALL} = 'C';
+}
+
 plan tests => 12;
 
 my ( $proc, $R, $W, $out );

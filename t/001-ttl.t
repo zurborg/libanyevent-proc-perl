@@ -3,6 +3,11 @@
 use Test::Most;
 use AnyEvent::Proc;
 
+BEGIN {
+    delete @ENV{qw{ LANG LANGUAGE }};
+    $ENV{LC_ALL} = 'C';
+}
+
 plan tests => 1;
 
 SKIP: {

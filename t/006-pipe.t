@@ -5,6 +5,11 @@ use AnyEvent;
 use AnyEvent::Proc;
 use IO::Pipe;
 
+BEGIN {
+    delete @ENV{qw{ LANG LANGUAGE }};
+    $ENV{LC_ALL} = 'C';
+}
+
 sub sync_read {
     my $h   = shift;
     my $buf = \( my $str = '' );

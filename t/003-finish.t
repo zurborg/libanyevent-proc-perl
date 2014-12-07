@@ -4,6 +4,11 @@ use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc;
 
+BEGIN {
+    delete @ENV{qw{ LANG LANGUAGE }};
+    $ENV{LC_ALL} = 'C';
+}
+
 plan tests => 4;
 
 my $ok = \( my $x = 0 );

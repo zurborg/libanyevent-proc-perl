@@ -1,5 +1,7 @@
 #!perl
 
+#BEGIN { $ENV{LC_ALL} = 'C' }
+
 use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc qw(run run_cb);
