@@ -6,6 +6,11 @@ use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc qw(run run_cb);
 
+BEGIN {
+	delete @ENV{qw{ LANG LANGUAGE }};
+	$ENV{LC_ALL} = 'C';
+}
+
 plan tests => 6;
 
 my ( $out, $err );
