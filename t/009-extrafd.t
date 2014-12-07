@@ -18,7 +18,7 @@ SKIP: {
 
     $proc = AnyEvent::Proc->new(
         bin    => $bin,
-        args   => [ -c => "echo hi >&$h1" ],
+        args   => [ -c => "echo hi >/dev/fd/$h1" ],
         ttl    => 5,
         outstr => \$out,
         errstr => \$err,
@@ -36,7 +36,7 @@ SKIP: {
 
     $proc = AnyEvent::Proc->new(
         bin    => $bin,
-        args   => [ -c => "cat <&$h2" ],
+        args   => [ -c => "cat </dev/fd/$h2" ],
         ttl    => 5,
         outstr => \$out,
         errstr => \$err,
