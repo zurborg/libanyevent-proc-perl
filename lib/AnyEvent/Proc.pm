@@ -47,7 +47,6 @@ Nothing by default. The following functions will be exported on request:
 our @EXPORT_OK = qw(run run_cb reader writer);
 
 sub _rpipe {
-    my $on_eof = shift;
     my ( $R, $W ) = AnyEvent::Util::portable_pipe;
     my $cv = AE::cv;
     (
@@ -57,16 +56,14 @@ sub _rpipe {
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error writing to handle: $message";
-                $cv->send($message);
+                $cv->croak($message);
             },
-            on_eof => $on_eof,
         ),
         $cv,
     );
 }
 
 sub _wpipe {
-    my $on_eof = shift;
     my ( $R, $W ) = AnyEvent::Util::portable_pipe;
     my $cv = AE::cv;
     (
@@ -75,9 +72,8 @@ sub _wpipe {
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error reading from handle: $message";
-                $cv->send($message);
+                $cv->croak($message);
             },
-            on_eof => $on_eof,
         ),
         $W,
         $cv,
@@ -286,13 +282,9 @@ sub new {
 
     $options{args} ||= [];
 
-    my $eof_in;
-    my $eof_out;
-    my $eof_err;
-
-    my ( $rIN,  $wIN,  $cvIN )  = _rpipe sub { $$eof_in->(@_) };
-    my ( $rOUT, $wOUT, $cvOUT ) = _wpipe sub { $$eof_out->(@_) };
-    my ( $rERR, $wERR, $cvERR ) = _wpipe sub { $$eof_err->(@_) };
+    my ( $rIN,  $wIN,  $cvIN )  = _rpipe;
+    my ( $rOUT, $wOUT, $cvOUT ) = _wpipe;
+    my ( $rERR, $wERR, $cvERR ) = _wpipe;
 
     my @xhs = @{ delete( $options{extras} ) || [] };
 
@@ -320,10 +312,6 @@ sub new {
         listeners => {
             exit       => delete $options{on_exit},
             ttl_exceed => delete $options{on_ttl_exceed},
-
-            #eof_stdin  => delete $options{on_eof_stdin},
-            #eof_stdout => delete $options{on_eof_stdout},
-            #eof_stderr => delete $options{on_eof_stderr},
         },
         eol     => "\n",
         cv      => $cv,
@@ -413,9 +401,7 @@ sub new {
     $cvERR->cb( $self->_reaper( $self->{waiters}->{err} ) );
     map { $_->{cv}->cb( $self->_reaper( $self->{waiters}->{"$_"} ) ) } @xhs;
 
-    $$eof_in  = sub { $self->_emit( eof_stdin  => @_ ); };
-    $$eof_out = sub { $self->_emit( eof_stdout => @_ ); };
-    $$eof_err = sub { $self->_emit( eof_stderr => @_ ); };
+    map { $_->{cv}->cb( $self->_reaper( $self->{waiters}->{"$_"} ) ) } @xhs;
 
     $cv->cb(
         sub {
