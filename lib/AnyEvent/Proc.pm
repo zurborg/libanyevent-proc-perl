@@ -777,9 +777,22 @@ Closes STDIN of subprocess
 =cut
 
 sub finish {
-    my ($self) = @_;
-    $self->in->destroy;
-    $self;
+    my ( $self, $cb ) = @_;
+    my $cv = AE::cv;
+    $cv->cb( sub { $cb->( shift->recv ) } ) if ref $cb eq 'CODE';
+    $self->in->on_drain(
+        sub {
+            shift->destroy;
+            $cv->send;
+        }
+    );
+    if ($cb) {
+        return $cv;
+    }
+    else {
+        $cv->recv;
+        return $self;
+    }
 }
 
 =method end()
@@ -969,22 +982,20 @@ sub pull {
         elsif ( $peer->isa('AnyEvent::Handle') ) {
             $peer->on_eof(
                 sub {
-                    AE::log debug => "$peer->on_eof";
-                    $self->finish;
-                    shift->destroy;
+                    AE::log debug => "pull($peer)->on_eof";
+                    $self->finish(1);
                 }
             );
             $peer->on_error(
                 sub {
-                    AE::log error => "$peer: " . $_[2];
-                    $self->finish;
+                    AE::log error => "pull($peer)->on_error(" . $_[2] . ")";
                     shift->destroy;
                 }
             );
             return _on_read_helper(
                 $peer,
                 sub {
-                    AE::log debug => "$peer->on_read";
+                    AE::log debug => "pull($peer)->on_read";
                     $self->write( shift() );
                 }
             );
@@ -999,6 +1010,7 @@ sub pull {
                     $self->write($x) or last;
                     Coro::cede();
                 }
+				$self->finish(1);
             };
         }
     }
@@ -1006,7 +1018,7 @@ sub pull {
         return _read_on_scalar(
             $peer,
             sub {
-                AE::log debug => "$peer->STORE";
+                AE::log debug => "pull($peer)->STORE";
                 $self->write( shift() );
             }
         );
@@ -1014,7 +1026,7 @@ sub pull {
     elsif ( ref $peer eq 'GLOB' ) {
         return $self->pull( AnyEvent::Handle->new( fh => $peer ) );
     }
-    AE::log fatal => "cannot handle $peer for stdin";
+    AE::log fatal => "cannot pull $peer to stdin";
 }
 
 sub _push_read {
