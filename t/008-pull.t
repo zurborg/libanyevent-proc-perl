@@ -4,6 +4,7 @@ use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc;
 use IO::Pipe;
+use Env::Path;
 
 BEGIN {
     delete @ENV{qw{ LANG LANGUAGE }};
@@ -15,8 +16,8 @@ plan tests => 12;
 my ( $proc, $R, $W, $out );
 
 SKIP: {
-    my $bin = '/bin/cat';
-    skip "executable $bin not available", 9 unless -x $bin;
+    my ($bin) = Env::Path->PATH->Whence('cat');
+    skip "test, reason: executablec 'cat' not available", 9 unless $bin;
 
     ( $R, $W ) = AnyEvent::Proc::_wpipe( sub { } );
 

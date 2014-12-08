@@ -3,19 +3,20 @@
 use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc;
+use Env::Path;
 
 BEGIN {
     delete @ENV{qw{ LANG LANGUAGE }};
     $ENV{LC_ALL} = 'C';
 }
 
-plan tests => 7;
+plan tests => 4;
 
 my $ok = \( my $x = 0 );
 
 SKIP: {
-    my $bin = '/bin/cat';
-    skip "executable $bin not available", 2 unless -x $bin;
+    my ($bin) = Env::Path->PATH->Whence('cat');
+    skip "test, reason: executable 'cat' not available", 2 unless $bin;
     my $proc =
       AnyEvent::Proc->new( bin => $bin, on_exit => sub { $$ok = 1 }, ttl => 5 );
     $proc->finish;
@@ -24,8 +25,8 @@ SKIP: {
 }
 
 SKIP: {
-    my $bin = '/bin/cat';
-    skip "executable $bin not available", 2 unless -x $bin;
+    my ($bin) = Env::Path->PATH->Whence('cat');
+    skip "test, reason: executable 'cat' not available", 2 unless $bin;
     my $proc =
       AnyEvent::Proc->new( bin => $bin, on_exit => sub { $$ok = 1 }, ttl => 5 );
     $proc->finish;

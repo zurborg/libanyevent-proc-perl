@@ -4,6 +4,7 @@ use Test::Most;
 use AnyEvent;
 use AnyEvent::Proc;
 use IO::Pipe;
+use Env::Path;
 
 BEGIN {
     delete @ENV{qw{ LANG LANGUAGE }};
@@ -15,8 +16,8 @@ plan tests => 7;
 my ( $proc, $out, $err );
 
 SKIP: {
-    my $bin = '/bin/sh';
-    skip "executable $bin not available", 6 unless -x $bin;
+    my ($bin) = Env::Path->PATH->Whence('sh');
+    skip "test, reason: executable 'sh' not available", 6 unless $bin;
 
     my $h1    = AnyEvent::Proc::reader();
     my $h1out = '';

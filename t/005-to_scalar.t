@@ -2,6 +2,7 @@
 
 use Test::Most;
 use AnyEvent::Proc;
+use Env::Path;
 
 BEGIN {
     delete @ENV{qw{ LANG LANGUAGE }};
@@ -11,8 +12,8 @@ BEGIN {
 plan tests => 6;
 
 SKIP: {
-    my $bin = '/bin/cat';
-    skip "executable $bin not available", 6 unless -x $bin;
+    my ($bin) = Env::Path->PATH->Whence('cat');
+    skip "test, reason: executable 'cat' not available", 6 unless $bin;
 
     my ( $proc, $out, $err );
 
