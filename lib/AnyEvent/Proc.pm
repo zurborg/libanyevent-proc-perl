@@ -651,8 +651,9 @@ Sends a named signal to the subprocess. C<$signal> defaults to I<TERM> if omitte
 sub fire {
     my ( $self, $signal ) = @_;
     $signal = 'TERM' unless defined $signal;
+    $signal =~ s{^sig}{}i;
+    AE::log debug   => "fire SIG$signal";
     kill uc $signal => $self->pid;
-    $self;
 }
 
 =method kill()
