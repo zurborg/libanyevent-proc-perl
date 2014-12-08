@@ -35,7 +35,11 @@ sub sync_read {
     $cv;
 }
 
-plan tests => 6;
+if (AnyEvent::detect eq 'AnyEvent::Impl::Perl') {
+	plan skip_all => "sync_read is broken with ae's pure-perl implementation";
+} else {
+	plan tests => 6;
+}
 
 my ( $proc, $R, $W, $cv );
 
