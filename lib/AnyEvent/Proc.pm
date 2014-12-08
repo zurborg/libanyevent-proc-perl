@@ -383,8 +383,6 @@ sub new {
         $self->pipe( out => $sref );
     }
 
-    map { $_->{cv}->cb( $self->_reaper( $self->{waiters}->{"$_"} ) ) } @xhs;
-
     $waiter->begin;
     $cv->cb(
         sub {
