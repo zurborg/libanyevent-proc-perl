@@ -268,7 +268,7 @@ sub new {
 
     $options{args} ||= [];
 
-    my ( $rIN,  $wIN  ) = _rpipe;
+    my ( $rIN,  $wIN )  = _rpipe;
     my ( $rOUT, $wOUT ) = _wpipe;
     my ( $rERR, $wERR ) = _wpipe;
 
@@ -759,9 +759,9 @@ Closes STDIN of subprocess
 =cut
 
 sub finish {
-    my ( $self, $cb ) = @_;
+    my ($self) = @_;
     $self->in->destroy;
-    return $self;
+    $self;
 }
 
 =method end()
