@@ -48,7 +48,6 @@ our @EXPORT_OK = qw(run run_cb reader writer);
 
 sub _rpipe {
     my ( $R, $W ) = AnyEvent::Util::portable_pipe;
-    my $cv = AE::cv;
     (
         $R,
         AnyEvent::Handle->new(
@@ -56,27 +55,22 @@ sub _rpipe {
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error writing to handle: $message";
-                $cv->croak($message);
             },
         ),
-        $cv,
     );
 }
 
 sub _wpipe {
     my ( $R, $W ) = AnyEvent::Util::portable_pipe;
-    my $cv = AE::cv;
     (
         AnyEvent::Handle->new(
             fh       => $R,
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error reading from handle: $message";
-                $cv->croak($message);
             },
         ),
         $W,
-        $cv,
     );
 }
 
@@ -175,25 +169,17 @@ sub _run_cmd {
 
     $$pidref = $pid;
 
-    %redir = ();        # close child side of the fds
-
-    my $status;
-    $cv->begin(
-        sub {
-            shift->send($status);
-        }
-    );
-
-    my $cw;
-    $cw = AE::child $pid => sub {
-        $status = $_[1] >> 8;
+    my $w;
+    $w = AE::child $pid => sub {
+        my $status   = $_[1] >> 8;
         my $signal   = $_[1] & 127;
         my $coredump = $_[1] & 128;
         AE::log info  => "child exited with status $status" if $status;
         AE::log debug => "child exited with signal $signal" if $signal;
         AE::log note  => "child exited with coredump"       if $coredump;
-        undef $cw;
-        $cv->end;
+        undef $w;
+        map { close $_ } values %redir;
+        $cv->send($status);
     };
 
     $cv;
@@ -282,9 +268,9 @@ sub new {
 
     $options{args} ||= [];
 
-    my ( $rIN,  $wIN,  $cvIN )  = _rpipe;
-    my ( $rOUT, $wOUT, $cvOUT ) = _wpipe;
-    my ( $rERR, $wERR, $cvERR ) = _wpipe;
+    my ( $rIN,  $wIN  ) = _rpipe;
+    my ( $rOUT, $wOUT ) = _wpipe;
+    my ( $rERR, $wERR ) = _wpipe;
 
     my @xhs = @{ delete( $options{extras} ) || [] };
 
@@ -300,6 +286,7 @@ sub new {
     );
 
     my $cv = _run_cmd( [ delete $options{bin} => @args ], \%redir, \$pid );
+    my $waiter = AE::cv;
 
     my $self = bless {
         handles => {
@@ -316,6 +303,7 @@ sub new {
         eol     => "\n",
         cv      => $cv,
         alive   => 1,
+        waiter  => $waiter,
         waiters => {
             in  => [],
             out => [],
@@ -333,9 +321,8 @@ sub new {
         $self->{reol} = delete $options{reol} || qr{$eol};
     }
 
-    my $w;
     if ( $options{ttl} ) {
-        $w = AnyEvent->timer(
+        $self->{timer} = AnyEvent->timer(
             after => delete $options{ttl},
             cb    => sub {
                 return unless $self->alive;
@@ -396,18 +383,16 @@ sub new {
         $self->pipe( out => $sref );
     }
 
-    $cvIN->cb( $self->_reaper( $self->{waiters}->{in} ) );
-    $cvOUT->cb( $self->_reaper( $self->{waiters}->{out} ) );
-    $cvERR->cb( $self->_reaper( $self->{waiters}->{err} ) );
     map { $_->{cv}->cb( $self->_reaper( $self->{waiters}->{"$_"} ) ) } @xhs;
 
-    map { $_->{cv}->cb( $self->_reaper( $self->{waiters}->{"$_"} ) ) } @xhs;
-
+    $waiter->begin;
     $cv->cb(
         sub {
-            $self->{alive} = 0;
-            undef $w;
-            $self->_emit( exit => shift->recv );
+            $self->{status} = shift->recv;
+            $self->{alive}  = 0;
+            undef $self->{timer};
+            $waiter->end;
+            $self->_emit( exit => $self->{status} );
         }
     );
 
@@ -553,7 +538,7 @@ sub run {
         sub {
             $cv->send( \@_ );
         }
-    );
+    )->recv;
     my ( $out, $err, $status ) = @{ $cv->recv };
     $? = $status << 8;
     if (wantarray) {
@@ -590,7 +575,7 @@ sub run_cb {
     $proc->finish;
     $proc->wait(
         sub {
-            my $status = shift;
+            my $status = $proc->{status};
             $? = $status << 8;
             $cb->( $out, $err, $status );
         }
@@ -739,34 +724,32 @@ sub alive {
 
 =method wait([$callback])
 
-Waits for the subprocess to be finished call the callback with the exit code. Returns a condvar, sended with the result of the callback.
+Waits for the subprocess to be finished call the callback with the exit code. Returns a condvar.
 
-Without callback, this is a synchronous call returning the exit code.
+Without callback, this is a synchronous call directly returning the exit code.
 
 =cut
 
 sub wait {
     my ( $self, $cb ) = @_;
+
     my $next = sub {
-        my $status = $self->{cv}->recv;
+        my $cv = shift;
+        $cv->recv;
         waitpid $self->{pid} => 0;
+        $cb->( $self->{status} ) if ref $cb eq 'CODE';
         $self->end;
-        $status;
+        $self->{status};
     };
+    AE::log debug => "waiting for "
+      . ( $self->{waiter}->{_ae_counter} ) . " ends";
     if ($cb) {
-        my $old_cb = $self->{cv}->cb || sub { };
-        my $cv = AE::cv;
-        $self->{cv}->cb(
-            sub {
-                $old_cb->(@_);
-                my $status = $next->();
-                $cv->send( $cb->($status) );
-            }
-        );
-        return $cv;
+        $self->{waiter}->cb($next);
+        return $self->{waiter};
     }
     else {
-        return $next->();
+        $self->{waiter}->recv;
+        return $next->( $self->{waiter} );
     }
 }
 
@@ -778,21 +761,8 @@ Closes STDIN of subprocess
 
 sub finish {
     my ( $self, $cb ) = @_;
-    my $cv = AE::cv;
-    $cv->cb( sub { $cb->( shift->recv ) } ) if ref $cb eq 'CODE';
-    $self->in->on_drain(
-        sub {
-            shift->destroy;
-            $cv->send;
-        }
-    );
-    if ($cb) {
-        return $cv;
-    }
-    else {
-        $cv->recv;
-        return $self;
-    }
+    $self->in->destroy;
+    return $self;
 }
 
 =method end()
@@ -956,10 +926,19 @@ sub pipe {
         $sub = $peer;
     }
     if ($sub) {
-        _on_read_helper( $self->_geth($what), $sub );
+        AE::log debug => "pipe $peer from $what";
+        my $aeh = $self->_geth($what);
+        $aeh->on_eof(
+            sub {
+                AE::log debug => "eof: $what";
+                $self->{waiter}->end;
+            }
+        );
+        $self->{output}->{$what} = _on_read_helper( $aeh, $sub );
+        $self->{waiter}->begin;
     }
     else {
-        AE::log fatal => "cannot handle $peer for $what";
+        AE::log fatal => "cannot pipe $peer from $what";
     }
 }
 
@@ -973,6 +952,8 @@ Pulls any data from another handle to STDIN. C<$peer> maybe another L<AnyEvent::
 
 sub pull {
     my ( $self, $peer ) = @_;
+    $self->{input} = $peer;
+    AE::log debug => "pull $peer to stdin";
     use Scalar::Util qw(blessed);
     my $sub;
     if ( blessed $peer) {
@@ -983,7 +964,7 @@ sub pull {
             $peer->on_eof(
                 sub {
                     AE::log debug => "pull($peer)->on_eof";
-                    $self->finish(1);
+                    $self->finish;
                 }
             );
             $peer->on_error(
@@ -1010,7 +991,7 @@ sub pull {
                     $self->write($x) or last;
                     Coro::cede();
                 }
-				$self->finish(1);
+                $self->finish;
             };
         }
     }
