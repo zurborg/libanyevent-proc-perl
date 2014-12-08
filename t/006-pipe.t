@@ -43,7 +43,7 @@ SKIP: {
     my ($bin) = Env::Path->PATH->Whence('cat');
     skip "test, reason: executable 'cat' not available", 6 unless $bin;
 
-    ( $R, $W ) = AnyEvent::Proc::_wpipe( sub { } );
+    ( $R, $W ) = AnyEvent::Proc::_wpipe;
     $cv = sync_read($R);
 
     $proc = AnyEvent::Proc->new( bin => $bin, ttl => 5 );
@@ -54,7 +54,7 @@ SKIP: {
     close $W;
     like $cv->recv => qr{^$$\s*$}, 'rbuf contains my pid';
 
-    ( $R, $W ) = AnyEvent::Proc::_rpipe( sub { } );
+    ( $R, $W ) = AnyEvent::Proc::_rpipe;
 
     $proc = AnyEvent::Proc->new( bin => $bin, ttl => 5 );
     $proc->pipe($W);

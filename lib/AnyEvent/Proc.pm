@@ -447,13 +447,10 @@ C<$reader> provides following methods:
 =cut
 
 sub reader {
-    my $eof = sub { };
-    my ( $r, $w, $cv ) = _wpipe sub { $$eof->(@_) };
+    my ( $r, $w ) = _wpipe;
     bless {
         r      => $r,
         w      => $w,
-        eof    => $eof,
-        cv     => $cv,
         fileno => fileno( $r->fh )
       } => __PACKAGE__
       . '::R';
@@ -501,13 +498,10 @@ Unfortunally L</pull> is unimplemented.
 =cut
 
 sub writer {
-    my $eof = sub { };
-    my ( $r, $w, $cv ) = _rpipe sub { $$eof->(@_) };
+    my ( $r, $w ) = _rpipe;
     bless {
         r      => $r,
         w      => $w,
-        eof    => $eof,
-        cv     => $cv,
         fileno => fileno( $w->fh )
       } => __PACKAGE__
       . '::W';

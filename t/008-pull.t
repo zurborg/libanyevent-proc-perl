@@ -19,7 +19,7 @@ SKIP: {
     my ($bin) = Env::Path->PATH->Whence('cat');
     skip "test, reason: executablec 'cat' not available", 9 unless $bin;
 
-    ( $R, $W ) = AnyEvent::Proc::_wpipe( sub { } );
+    ( $R, $W ) = AnyEvent::Proc::_wpipe;
 
     $proc = AnyEvent::Proc->new( bin => $bin, ttl => 5, outstr => \$out );
     ok $proc->pull($R);
@@ -28,7 +28,7 @@ SKIP: {
     is $proc->wait() => 0,           'wait ok, status is 0';
     like $out        => qr{^$$\s*$}, 'rbuf contains my pid';
 
-    ( $R, $W ) = AnyEvent::Proc::_rpipe( sub { } );
+    ( $R, $W ) = AnyEvent::Proc::_rpipe;
 
     $proc = AnyEvent::Proc->new( bin => $bin, ttl => 5, outstr => \$out );
     ok $proc->pull($R);
