@@ -1,6 +1,9 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+ - fix wait() and finish()
+ - documentation
+ - fix PATH in tests
 
 0.103 2014-12-07
  - allow scalarref for pull()
