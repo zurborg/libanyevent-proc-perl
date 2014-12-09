@@ -9,7 +9,9 @@ use AnyEvent;
 use AnyEvent::Handle;
 use AnyEvent::Util ();
 use Try::Tiny;
+use Class::Load;
 use Exporter qw(import);
+use Carp;
 use POSIX;
 
 # VERSION
@@ -978,14 +980,17 @@ sub pull {
             return $self->pull( AnyEvent::Handle->new( fh => $peer ) );
         }
         elsif ( $peer->isa('Coro::Channel') ) {
-            require Coro;
-            return Coro::async {
-                while ( my $x = $peer->get ) {
-                    $self->write($x) or last;
-                    Coro::cede();
-                }
-                $self->finish;
-            };
+            if ( my $class = load_class('Coro') ) {
+                return $class->new(
+                    sub {
+                        while ( my $x = $peer->get ) {
+                            $self->write($x) or last;
+                            Coro::cede();
+                        }
+                        $self->finish;
+                    }
+                );
+            }
         }
     }
     elsif ( ref $peer eq 'SCALAR' ) {
@@ -1071,8 +1076,9 @@ sub _readline_cv {
 sub _readline_ch {
     my ( $self, $what, $channel ) = @_;
     unless ($channel) {
-        require Coro::Channel;
-        $channel ||= Coro::Channel->new;
+        if ( my $class = load_class('Coro::Channel') ) {
+            $channel ||= $class->new;
+        }
     }
     $self->_push_waiter( $what => $channel );
     $channel->shutdown unless $self->_readline( $what => _sub_ch($channel) );
@@ -1092,8 +1098,9 @@ sub _readlines_cb {
 sub _readlines_ch {
     my ( $self, $what, $channel ) = @_;
     unless ($channel) {
-        require Coro::Channel;
-        $channel ||= Coro::Channel->new;
+        if ( my $class = load_class('Coro::Channel') ) {
+            $channel ||= $class->new;
+        }
     }
     $self->_push_waiter( $what => $channel );
     $channel->shutdown unless $self->_geth($what)->on_read(
@@ -1121,8 +1128,9 @@ sub _readchunk_cv {
 sub _readchunk_ch {
     my ( $self, $what, $bytes, $channel ) = @_;
     unless ($channel) {
-        require Coro::Channel;
-        $channel ||= Coro::Channel->new;
+        if ( my $class = load_class('Coro::Channel') ) {
+            $channel ||= $class->new;
+        }
     }
     $self->_push_waiter( $what => $channel );
     $channel->shutdown unless $self->_readline( $what => _sub_ch($channel) );
@@ -1132,8 +1140,9 @@ sub _readchunk_ch {
 sub _readchunks_ch {
     my ( $self, $what, $bytes, $channel ) = @_;
     unless ($channel) {
-        require Coro::Channel;
-        $channel ||= Coro::Channel->new;
+        if ( my $class = load_class('Coro::Channel') ) {
+            $channel ||= $class->new;
+        }
     }
     $self->_push_waiter( $what => $channel );
     $channel->shutdown unless $self->_geth($what)->on_read(
