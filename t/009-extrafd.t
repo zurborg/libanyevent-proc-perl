@@ -11,13 +11,18 @@ BEGIN {
     $ENV{LC_ALL} = 'C';
 }
 
-plan tests => 7;
+if ( AnyEvent::detect eq 'AnyEvent::Impl::Perl' ) {
+    plan skip_all => "pipes are broken with AE's pure-perl implementation";
+}
+else {
+    plan tests => 7;
+}
 
 my ( $proc, $out, $err );
 
 SKIP: {
     my ($bin) = Env::Path->PATH->Whence('sh');
-    skip "test, reason: executable 'sh' not available", 6 unless $bin;
+    skip "test, reason: executable 'sh' not available", 7 unless $bin;
 
     my $h1    = AnyEvent::Proc::reader();
     my $h1out = '';

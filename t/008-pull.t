@@ -11,13 +11,18 @@ BEGIN {
     $ENV{LC_ALL} = 'C';
 }
 
-plan tests => 12;
+if ( AnyEvent::detect eq 'AnyEvent::Impl::Perl' ) {
+    plan skip_all => "pipes are broken with AE's pure-perl implementation";
+}
+else {
+    plan tests => 12;
+}
 
 my ( $proc, $R, $W, $out );
 
 SKIP: {
     my ($bin) = Env::Path->PATH->Whence('cat');
-    skip "test, reason: executablec 'cat' not available", 9 unless $bin;
+    skip "test, reason: executablec 'cat' not available", 12 unless $bin;
 
     ( $R, $W ) = AnyEvent::Proc::_wpipe;
 
