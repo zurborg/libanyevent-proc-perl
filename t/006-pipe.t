@@ -35,7 +35,7 @@ sub sync_read {
     $cv;
 }
 
-if ( 0 && AnyEvent::detect eq 'AnyEvent::Impl::Perl' ) {
+if ( AnyEvent::detect eq 'AnyEvent::Impl::Perl' ) {
     plan skip_all => "pipes are broken with AE's pure-perl implementation";
 }
 else {
