@@ -1,13 +1,11 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+
+0.104 2014-12-09
  - fix wait() and finish()
  - documentation
  - fix PATH in tests
-
-0.103 2014-12-07
- - allow scalarref for pull()
- - support callback for wait()
 
  [API CHANGES]
 
@@ -16,6 +14,10 @@ Revision history for AnyEvent-Proc
  [DOCUMENTATION]
 
  [ENHANCEMENTS]
+
+0.103 2014-12-07
+ - allow scalarref for pull()
+ - support callback for wait()
 
 0.102 2014-12-04
  - new method "pull"
