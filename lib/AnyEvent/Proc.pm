@@ -28,6 +28,10 @@ use POSIX;
 
 AnyEvent::Proc is a L<AnyEvent>-based helper class for running external commands with full control over STDIN, STDOUT and STDERR.
 
+=head1 LIMITATIONS
+
+Use L<EV>. The fallback module L<AnyEvent::Impl::Perl> has some issues with pipes. In some cases, L<AnyEvent::Handle> don't receive data from its pipe peer and the application will block forever. I haven't a solution yet, so don't rely on pipes when you use AE's pure-perl backend.
+
 =head1 EXPORTS
 
 Nothing by default. The following functions will be exported on request:
