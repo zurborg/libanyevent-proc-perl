@@ -1,13 +1,10 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+
+0.105 2014-12-10
  - destroy handles to be sure
  - downgrade reporting category for some warnings
-
-0.104 2014-12-09
- - fix wait() and finish()
- - documentation
- - fix PATH in tests
 
  [API CHANGES]
 
@@ -16,6 +13,11 @@ Revision history for AnyEvent-Proc
  [DOCUMENTATION]
 
  [ENHANCEMENTS]
+
+0.104 2014-12-09
+ - fix wait() and finish()
+ - documentation
+ - fix PATH in tests
 
 0.103 2014-12-07
  - allow scalarref for pull()
