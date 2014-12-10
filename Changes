@@ -1,6 +1,8 @@
 Revision history for AnyEvent-Proc
 
 {{$NEXT}}
+ - destroy handles to be sure
+ - downgrade reporting category for some warnings
 
 0.104 2014-12-09
  - fix wait() and finish()
