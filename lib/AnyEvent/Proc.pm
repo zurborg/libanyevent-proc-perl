@@ -74,7 +74,8 @@ sub _wpipe {
             fh       => $R,
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
-                AE::log warn => "error reading from handle: $message";
+                AE::log warn => "error reading from handle: $message"
+                  unless $message =~ m{unexpected end-of-file}i;
                 $handle->destroy;
             },
         ),
@@ -1024,7 +1025,7 @@ sub _push_read {
         $ok = 1;
     }
     catch {
-        AE::log warn => "cannot push_read from std$what: $_";
+        AE::log note => "cannot push_read from std$what: $_";
     };
     $ok;
 }
@@ -1037,7 +1038,7 @@ sub _unshift_read {
         $ok = 1;
     }
     catch {
-        AE::log warn => "cannot unshift_read from std$what: $_";
+        AE::log note => "cannot unshift_read from std$what: $_";
     };
     $ok;
 }
@@ -1385,7 +1386,7 @@ sub write {
         $ok = 1;
     }
     catch {
-        AE::log warn => $_;
+        AE::log note => $_;
     };
     $ok;
 }
