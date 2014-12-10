@@ -61,6 +61,7 @@ sub _rpipe {
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error writing to handle: $message";
+                $handle->destroy;
             },
         ),
     );
@@ -74,6 +75,7 @@ sub _wpipe {
             on_error => sub {
                 my ( $handle, $fatal, $message ) = @_;
                 AE::log warn => "error reading from handle: $message";
+                $handle->destroy;
             },
         ),
         $W,
@@ -930,6 +932,7 @@ sub pipe {
         $aeh->on_eof(
             sub {
                 AE::log debug => "eof: $what";
+                shift->destroy;
                 $self->{waiter}->end;
             }
         );
@@ -963,6 +966,7 @@ sub pull {
             $peer->on_eof(
                 sub {
                     AE::log debug => "pull($peer)->on_eof";
+                    shift->destroy;
                     $self->finish;
                 }
             );
